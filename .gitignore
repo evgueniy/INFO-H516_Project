@@ -1,0 +1,12 @@
+ICSPCodec/build/Debug/CMakeCache.txt
+ICSPCodec/build/Debug/cmake_install.cmake
+ICSPCodec/build/Debug/CMakeFiles/
+ICSPCodec/build/Debug/Makefile
+ICSPCodec/build/Debug/ICSPCodec
+ICSPCodec/build/Release/CMakeCache.txt
+ICSPCodec/build/Release/cmake_install.cmake
+ICSPCodec/build/Release/CMakeFiles/
+ICSPCodec/build/Release/Makefile
+ICSPCodec/build/Release/ICSPCodec
+*.bin
+.vscode/
