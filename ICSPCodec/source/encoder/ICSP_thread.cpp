@@ -71,7 +71,6 @@ void thread_pool_start(thread_pool_t* pool, int nthreads, FrameData* frames, cmd
     int height = frames->splitHeight * frames->blocks->blocksize1;
     int width = frames->splitWidth * frames->blocks->blocksize1;
     int pred_mode = (intra_period < 2) ?  INTRA : INTER;
-
-    checkResultFrames(frames, width, height, total_frames, pred_mode, SAVE_YUV);
+    //checkResultFrames(frames, width, height, total_frames, pred_mode, SAVE_YUV);
     //makebitstream(frames, opt->total_frames, height, width, QP_DC, QP_AC, intra_period, pred_mode);
 }

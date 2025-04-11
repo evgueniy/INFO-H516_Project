@@ -239,7 +239,7 @@ void multi_thread_encoding(cmd_options_t* opt, FrameData* frames);
 void *encoding_thread(void* arg);
 
 // single-thread functions
-void single_thread_encoding(FrameData* frames, YCbCr_t* YCbCr, int intra_period, int QstepDC, int QstepAC);
+void single_thread_encoding(FrameData* frames, YCbCr_t* YCbCr,char* fname, int intra_period, int QstepDC, int QstepAC);
 
 /* initiation function */
 int YCbCrLoad(IcspCodec &icC, char* fname, const int nframe, const int width, const int height);
@@ -280,7 +280,7 @@ void ImvPrediction(FrameData& cntFrm, int numOfblck16);
 /* check result function*/
 void checkResultY(unsigned char* img, int width, int height);
 void checkResultYUV(unsigned char *Y, unsigned char *Cb, unsigned char *Cr, int width, int height);
-void checkResultFrames(FrameData* frm, int width, int height, int nframe, int predtype, int chtype); //predtype : INTRA or INTER, chtype: SAVE_Y or SAVE_YUV
+void checkResultFrames(FrameData* frm,char* fname, int width, int height, int nframe,int QstepDC, int QstepAC, int intraPeriod, int predtype, int chtype); //predtype : INTRA or INTER, chtype: SAVE_Y or SAVE_YUV
 void checkRestructed(FrameData* frms, int nframes, int width, int height, int type);
 
 /* common function */

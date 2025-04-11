@@ -242,13 +242,13 @@ void* encoding_thread(void* arg)
 
 
 // single-thread function
-void single_thread_encoding(FrameData* frames, YCbCr_t* YCbCr, int intra_period, int QstepDC, int QstepAC)
+void single_thread_encoding(FrameData* frames, YCbCr_t* YCbCr,char* fname, int intra_period, int QstepDC, int QstepAC)
 {
 	if( intra_period==ALL_INTRA )
 	{
 		allintraPrediction(frames, YCbCr->nframe, QstepDC, QstepAC);
 		makebitstream(frames, YCbCr->nframe, YCbCr->height, YCbCr->width, QstepDC, QstepAC, intra_period, INTRA);
-		checkResultFrames(frames, YCbCr->width, YCbCr->height, YCbCr->nframe, INTRA, SAVE_YUV);
+		checkResultFrames(frames, fname,YCbCr->width, YCbCr->height, YCbCr->nframe, QstepDC, QstepAC, intra_period, INTRA, SAVE_YUV);
 	}
 	else
 	{
@@ -268,7 +268,7 @@ void single_thread_encoding(FrameData* frames, YCbCr_t* YCbCr, int intra_period,
 			print_frame_end_message(n, frame_type);
 		}		
 		makebitstream(frames, YCbCr->nframe, YCbCr->height, YCbCr->width, QstepDC, QstepAC, intra_period, INTER);
-		checkResultFrames(frames, YCbCr->width, YCbCr->height,YCbCr->nframe, INTER, SAVE_YUV);
+		checkResultFrames(frames, fname,YCbCr->width, YCbCr->height,YCbCr->nframe, QstepDC, QstepAC, intra_period, INTER, SAVE_YUV);
 	}
 }
 /* initiation function*/
@@ -6401,19 +6401,12 @@ void checkResultYUV(unsigned char *Y, unsigned char *Cb, unsigned char *Cr, int 
 	fwrite(Cr, sizeof(unsigned char)*(height/2)*(width/2), 1, output_fp);
 	fclose(output_fp);
 }
-void checkResultFrames(FrameData* frm, int width, int height, int nframe, int predtype, int chtype)
+void checkResultFrames(FrameData* frm,char* fname, int width, int height, int nframe,int QstepDC, int QstepAC, int intraPeriod, int predtype, int chtype)
 {
 	FILE* output_fp;
 
-	char output_ch_name[256];
-	if(chtype == SAVE_Y)
-		sprintf(output_ch_name, "_y.yuv");
-	else if(chtype == SAVE_YUV)
-		sprintf(output_ch_name, "_yuv.yuv");
-
-
 	char output_fname[256];
-	sprintf(output_fname, "test%s", output_ch_name);
+	sprintf(output_fname, "%s_%d_%d_%d_decoded.yuv" ,fname,QstepDC,QstepAC,intraPeriod);
 
 	output_fp = fopen(output_fname, "wb");
 	if(output_fp==NULL)
