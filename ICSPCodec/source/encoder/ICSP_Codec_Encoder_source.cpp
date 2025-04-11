@@ -80,6 +80,28 @@ void print_error_message(int err_type, char* func_name)
 	exit(-1);
 }
 
+void writeCsvData(const int nframe,char* fname, int intra_period, int QstepDC, int QstepAC){
+	char fileName[256];
+	// File naming scheme original file name _ Qp _ Qp _ Intraperiod 
+	sprintf(fileName, "%s_%d_%d_%d.csv",fname,QstepDC,QstepAC,intra_period);
+	FILE *csv = fopen(fileName, "w");
+	if (!csv) {
+        perror("Error opening the CSV file");
+        exit(1);
+    }
+	char line[256];
+	//header
+	//todo add PSNR per frame in header as well in data
+    sprintf(line, "Frame;TotalDC;TotalAC;TotalMV;TotalEntropy\n");
+    fputs(line, csv);
+	//data
+	for(int i = 0; i< nframe;i++){
+		sprintf(line, "%d;%u;%u;%u;%u\n", i, totalDC[i], totalAC[i], totalMV[i], totalEntropy[i]);
+        fputs(line, csv);
+	}
+	fclose(csv);
+}
+
 /* parsing command function */
 static void init_cmd_options(cmd_options_t* cmd)
 {

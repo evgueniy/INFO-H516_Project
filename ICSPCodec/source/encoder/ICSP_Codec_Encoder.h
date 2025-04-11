@@ -224,7 +224,8 @@ public:
 	void encoding(cmd_options_t* opt);
 	~IcspCodec(); 
 };
-
+/*Data collection functions*/
+void writeCsvData(const int nframe,char* fname, int intra_period, int QstepDC, int QstepAC);
 /* parsing command function */
 void set_command_options(int argc, char *argv[], cmd_options_t* cmd);
 

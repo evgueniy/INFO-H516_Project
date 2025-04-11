@@ -8,5 +8,6 @@ ICSPCodec/build/Release/cmake_install.cmake
 ICSPCodec/build/Release/CMakeFiles/
 ICSPCodec/build/Release/Makefile
 ICSPCodec/build/Release/ICSPCodec
+*.yuv
 *.bin
 .vscode/
