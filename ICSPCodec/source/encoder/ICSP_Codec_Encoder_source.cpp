@@ -82,6 +82,12 @@ void print_error_message(int err_type, char* func_name)
 
 void writeCsvData(const int nframe,char* fname, int intra_period, int QstepDC, int QstepAC){
 	char fileName[256];
+	// TODO either get those value through parameters or global variables
+	// for now i just create dummy arrays so it compiles
+	unsigned totalDC[300];
+	unsigned totalAC[300];
+	unsigned totalMV[300];
+	unsigned totalEntropy[300];
 	// File naming scheme original file name _ Qp _ Qp _ Intraperiod 
 	sprintf(fileName, "%s_%d_%d_%d.csv",fname,QstepDC,QstepAC,intra_period);
 	FILE *csv = fopen(fileName, "w");
