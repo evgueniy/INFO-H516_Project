@@ -80,14 +80,9 @@ void print_error_message(int err_type, char* func_name)
 	exit(-1);
 }
 
-void writeCsvData(const int nframe,char* fname, int intra_period, int QstepDC, int QstepAC){
+void writeCsvData(const Statistics &stats, char* fname, int intra_period, int QstepDC, int QstepAC){
 	char fileName[256];
-	// TODO either get those value through parameters or global variables
-	// for now i just create dummy arrays so it compiles
-	unsigned totalDC[300];
-	unsigned totalAC[300];
-	unsigned totalMV[300];
-	unsigned totalEntropy[300];
+
 	// File naming scheme original file name _ Qp _ Qp _ Intraperiod 
 	sprintf(fileName, "%s_%d_%d_%d.csv",fname,QstepDC,QstepAC,intra_period);
 	FILE *csv = fopen(fileName, "w");
@@ -101,8 +96,8 @@ void writeCsvData(const int nframe,char* fname, int intra_period, int QstepDC, i
     sprintf(line, "Frame;TotalDC;TotalAC;TotalMV;TotalEntropy\n");
     fputs(line, csv);
 	//data
-	for(int i = 0; i< nframe;i++){
-		sprintf(line, "%d;%u;%u;%u;%u\n", i, totalDC[i], totalAC[i], totalMV[i], totalEntropy[i]);
+	for(int i = 0; i< stats.frameCount;i++){
+		sprintf(line, "%d;%u;%u;%u;%u\n", i, stats.totalDcBits[i], stats.totalAcBits[i], stats.totalMvBits[i], stats.totalEntropyBits[i]);
         fputs(line, csv);
 	}
 	fclose(csv);
@@ -242,12 +237,12 @@ void* encoding_thread(void* arg)
 
 
 // single-thread function
-void single_thread_encoding(FrameData* frames, YCbCr_t* YCbCr,char* fname, int intra_period, int QstepDC, int QstepAC)
+void single_thread_encoding(FrameData* frames, YCbCr_t* YCbCr,char* fname, int intra_period, int QstepDC, int QstepAC, Statistics *stats)
 {
 	if( intra_period==ALL_INTRA )
 	{
 		allintraPrediction(frames, YCbCr->nframe, QstepDC, QstepAC);
-		makebitstream(frames, YCbCr->nframe, YCbCr->height, YCbCr->width, QstepDC, QstepAC, intra_period, INTRA);
+		makebitstream(frames, YCbCr->nframe, YCbCr->height, YCbCr->width, QstepDC, QstepAC, intra_period, INTRA, stats);
 		checkResultFrames(frames, fname,YCbCr->width, YCbCr->height, YCbCr->nframe, QstepDC, QstepAC, intra_period, INTRA, SAVE_YUV);
 	}
 	else
@@ -267,7 +262,7 @@ void single_thread_encoding(FrameData* frames, YCbCr_t* YCbCr,char* fname, int i
 			}
 			print_frame_end_message(n, frame_type);
 		}		
-		makebitstream(frames, YCbCr->nframe, YCbCr->height, YCbCr->width, QstepDC, QstepAC, intra_period, INTER);
+		makebitstream(frames, YCbCr->nframe, YCbCr->height, YCbCr->width, QstepDC, QstepAC, intra_period, INTER, stats);
 		checkResultFrames(frames, fname,YCbCr->width, YCbCr->height,YCbCr->nframe, QstepDC, QstepAC, intra_period, INTER, SAVE_YUV);
 	}
 }
@@ -4874,7 +4869,7 @@ void mergeBlock(BlockData &bd, int blocksize, int type) // 8x8 -> 16x16 ���
 
 
 /* bitstream function */
-void makebitstream(FrameData* frames, int nframes, int height, int width, int QstepDC, int QstepAC, int intraPeriod, int predmode)
+void makebitstream(FrameData* frames, int nframes, int height, int width, int QstepDC, int QstepAC, int intraPeriod, int predmode, Statistics *stats)
 {
 	/* header */
 	header hd;
@@ -4894,7 +4889,7 @@ void makebitstream(FrameData* frames, int nframes, int height, int width, int Qs
 	/* body */
 	if(predmode==INTRA)
 	{
-		allintraBody(frames, nframes, fp);
+		allintraBody(frames, nframes, fp, stats);
 	}
 	else if(predmode==INTER)
 	{
@@ -4911,12 +4906,12 @@ void makebitstream(FrameData* frames, int nframes, int height, int width, int Qs
 		{
 			if(n%intraPeriod==0)
 			{
-				intraBody(frames[n], tempFrame, cntbits);
+				intraBody(frames[n], tempFrame, cntbits, stats);
 				//cout << "intra frame bits: " << cntbits << endl;
 			}
 			else
 			{
-				interBody(frames[n], tempFrame, cntbits);
+				interBody(frames[n], tempFrame, cntbits, stats);
 				//cout << "inter frame bits: " << cntbits << endl;				
 			}
 		}
@@ -4948,7 +4943,7 @@ void headerinit(header& hd, int height, int width, int QstepDC, int QstepAC, int
 		(hd.outro <<= 1) |= 0;	// last bits = 0;
 	}
 }
-void allintraBody(FrameData* frames, int nframes, FILE* fp)
+void allintraBody(FrameData* frames, int nframes, FILE* fp, Statistics *stats)
 {
 	int totalblck = frames->nblocks16;
 	int nblock8   = frames->nblocks8;
@@ -4987,6 +4982,9 @@ void allintraBody(FrameData* frames, int nframes, FILE* fp)
 				for(int n=0; n<DCbits; n++)
 					(frame[cntbits++/8]<<=1) |= DCResult[n];
 				free(DCResult);
+
+				if (stats)
+					stats->totalDcBits[frames[nfrm].numOfFrame] += DCbits;
 								
 				(frame[cntbits++/8]<<=1) |= bd.intraACflag[nblck8]; // acflag 1bit
 				
@@ -4994,6 +4992,9 @@ void allintraBody(FrameData* frames, int nframes, FILE* fp)
 				{
 					for(int n=0; n<63; n++)
 						(frame[cntbits++/8]<<=1) |= 0;	
+
+					if (stats)
+						stats->totalAcBits[frames[nfrm].numOfFrame] += 63;
 				}
 				else
 				{
@@ -5002,6 +5003,9 @@ void allintraBody(FrameData* frames, int nframes, FILE* fp)
 						(frame[cntbits++/8]<<=1) |= ACResult[n];
 				
 					free(ACResult);
+
+					if (stats)
+						stats->totalAcBits[frames[nfrm].numOfFrame] += ACbits;
 				}
 			}
 			// Cb Cr 8x8 ����
@@ -5016,12 +5020,18 @@ void allintraBody(FrameData* frames, int nframes, FILE* fp)
 				(frame[cntbits++/8]<<=1) |= DCResult[n];
 			free(DCResult);
 
+			if (stats)
+				stats->totalDcBits[frames[nfrm].numOfFrame] += DCbits;
+
 			(frame[cntbits++/8]<<=1) |= cbbd.intraACflag; // acflag 1bit
 
 			if(cbbd.intraACflag==1)
 			{
 				for(int n=0; n<63; n++)
 					(frame[cntbits++/8]<<=1) |= 0;	
+
+				if (stats)
+					stats->totalAcBits[frames[nfrm].numOfFrame] += 63;
 			}
 			else
 			{
@@ -5030,6 +5040,9 @@ void allintraBody(FrameData* frames, int nframes, FILE* fp)
 					(frame[cntbits++/8]<<=1) |= ACResult[n];
 			
 				free(ACResult);
+
+				if (stats)
+					stats->totalAcBits[frames[nfrm].numOfFrame] += ACbits;
 			}
 			DCbits = 0;
 			ACbits = 0;
@@ -5039,11 +5052,17 @@ void allintraBody(FrameData* frames, int nframes, FILE* fp)
 				(frame[cntbits++/8]<<=1) |= DCResult[n];
 			free(DCResult);
 
+			if (stats)
+				stats->totalDcBits[frames[nfrm].numOfFrame] += DCbits;
+
 			(frame[cntbits++/8]<<=1) |= crbd.intraACflag; // acflag 1bit
 			if(crbd.intraACflag==1)
 			{
 				for(int n=0; n<63; n++)
 					(frame[cntbits++/8]<<=1) |= 0;	
+
+				if (stats)
+					stats->totalAcBits[frames[nfrm].numOfFrame] += 63;
 			}
 			else
 			{
@@ -5051,13 +5070,21 @@ void allintraBody(FrameData* frames, int nframes, FILE* fp)
 				for(int n=0; n<ACbits; n++)
 					(frame[cntbits++/8]<<=1) |= ACResult[n];
 				free(ACResult);
+
+				if (stats)
+					stats->totalAcBits[frames[nfrm].numOfFrame] += ACbits;
 			}
 		}	
+		if (stats) {
+			int i = frames[nfrm].numOfFrame;
+			// We do not have MV bits here as it’s an intra frame
+			stats->totalEntropyBits[i] = stats->totalAcBits[i] + stats->totalDcBits[i];
+		}
 	}
 	fwrite(frame, (cntbits/8)+1, 1, fp); 
 	free(frame);
 }
-void intraBody(FrameData& frm, unsigned char* tempFrame, int& cntbits)
+void intraBody(FrameData& frm, unsigned char* tempFrame, int& cntbits, Statistics *stats)
 {
 	int totalblck = frm.nblocks16;
 	int nblock8   = frm.nblocks8;
@@ -5089,13 +5116,18 @@ void intraBody(FrameData& frm, unsigned char* tempFrame, int& cntbits)
 			for(int n=0; n<DCbits; n++)
 				(tempFrame[cntbits++/8]<<=1) |= DCResult[n];
 			free(DCResult);
-				
+
+			if (stats)
+				stats->totalDcBits[frm.numOfFrame] += DCbits;
 
 			(tempFrame[cntbits++/8]<<=1) |= bd.intraACflag[nblck8];		  // acflag 1bit
 			if(bd.intraACflag[nblck8]==1)
 			{
 				for(int n=0; n<63; n++)
 					(tempFrame[cntbits++/8]<<=1) |= 0;
+
+				if (stats)
+					stats->totalAcBits[frm.numOfFrame] += 63;
 			}
 			else
 			{
@@ -5103,6 +5135,9 @@ void intraBody(FrameData& frm, unsigned char* tempFrame, int& cntbits)
 				for(int n=0; n<ACbits; n++)
 					(tempFrame[cntbits++/8]<<=1) |= ACResult[n];
 				free(ACResult);
+
+				if (stats)
+					stats->totalAcBits[frm.numOfFrame] += ACbits;
 			}
 
 		}
@@ -5118,12 +5153,17 @@ void intraBody(FrameData& frm, unsigned char* tempFrame, int& cntbits)
 			(tempFrame[cntbits++/8]<<=1) |= DCResult[n];
 		free(DCResult);
 
+		if (stats)
+			stats->totalDcBits[frm.numOfFrame] += DCbits;
 
 		(tempFrame[cntbits++/8]<<=1) |= cbbd.intraACflag;	   // acflag 1bit
 		if(cbbd.intraACflag==1)
 		{
 			for(int n=0; n<63; n++)
 				(tempFrame[cntbits++/8]<<=1) |= 0;
+
+			if (stats)
+				stats->totalAcBits[frm.numOfFrame] += 63;
 		}
 		else
 		{
@@ -5131,6 +5171,9 @@ void intraBody(FrameData& frm, unsigned char* tempFrame, int& cntbits)
 			for(int n=0; n<ACbits; n++)
 				(tempFrame[cntbits++/8]<<=1) |= ACResult[n];
 			free(ACResult);
+
+			if (stats)
+				stats->totalAcBits[frm.numOfFrame] += ACbits;
 		}
 
 		DCbits = 0;
@@ -5141,11 +5184,17 @@ void intraBody(FrameData& frm, unsigned char* tempFrame, int& cntbits)
 			(tempFrame[cntbits++/8]<<=1) |= DCResult[n];
 		free(DCResult);
 
+		if (stats)
+			stats->totalDcBits[frm.numOfFrame] += DCbits;
+
 		(tempFrame[cntbits++/8]<<=1) |= crbd.intraACflag; // acflag 1bit
 		if(crbd.intraACflag==1)
 		{
 			for(int n=0; n<63; n++)
 				(tempFrame[cntbits++/8]<<=1) |= 0;
+
+			if (stats)
+				stats->totalAcBits[frm.numOfFrame] += 63;
 		}
 		else
 		{
@@ -5153,11 +5202,18 @@ void intraBody(FrameData& frm, unsigned char* tempFrame, int& cntbits)
 			for(int n=0; n<ACbits; n++)
 				(tempFrame[cntbits++/8]<<=1) |= ACResult[n];
 			free(ACResult);
-		}
 
+			if (stats)
+				stats->totalAcBits[frm.numOfFrame] += ACbits;
+		}
+	}
+	if (stats) {
+		int i = frm.numOfFrame;
+		// We do not have MV bits here as it’s an intra frame
+		stats->totalEntropyBits[i] = stats->totalAcBits[i] + stats->totalDcBits[i];
 	}
 }
-void interBody(FrameData& frm, unsigned char* tempFrame, int& cntbits)
+void interBody(FrameData& frm, unsigned char* tempFrame, int& cntbits, Statistics *stats)
 {
 	int totalblck = frm.nblocks16;
 	int nblock8   = frm.nblocks8;
@@ -5185,6 +5241,9 @@ void interBody(FrameData& frm, unsigned char* tempFrame, int& cntbits)
 				(tempFrame[cntbits++/8]<<=1) |= MVResult[n];
 		free(MVResult);
 
+		if (stats)
+			stats->totalMvBits[frm.numOfFrame] += xMVbits + yMVbits;
+
 		// Y 16x16 ����
 		for(int nblck8=0; nblck8<nblock8; nblck8++)
 		{	
@@ -5196,12 +5255,18 @@ void interBody(FrameData& frm, unsigned char* tempFrame, int& cntbits)
 			for(int n=0; n<DCbits; n++)
 				(tempFrame[cntbits++/8]<<=1) |= DCResult[n];
 			free(DCResult);
+
+			if (stats)
+				stats->totalDcBits[frm.numOfFrame] += DCbits;
 				
 			(tempFrame[cntbits++/8]<<=1) |= bd.interACflag[nblck8]; // acflag 1bit
 			if(bd.interACflag[nblck8] == 1)
 			{
 				for(int n=0; n<63; n++)
 					(tempFrame[cntbits++/8]<<=1) |= 0;
+
+				if (stats)
+					stats->totalAcBits[frm.numOfFrame] += 63;
 			}
 			else
 			{
@@ -5209,6 +5274,9 @@ void interBody(FrameData& frm, unsigned char* tempFrame, int& cntbits)
 				for(int n=0; n<ACbits; n++)
 					(tempFrame[cntbits++/8]<<=1) |= ACResult[n];
 				free(ACResult);
+
+				if (stats)
+					stats->totalAcBits[frm.numOfFrame] += ACbits;
 			}
 		}
 		//cout << "Yframe bits: " << cntbits << endl;
@@ -5225,11 +5293,17 @@ void interBody(FrameData& frm, unsigned char* tempFrame, int& cntbits)
 			(tempFrame[cntbits++/8]<<=1) |= DCResult[n];
 		free(DCResult);
 
+		if (stats)
+			stats->totalDcBits[frm.numOfFrame] += DCbits;
+
 		(tempFrame[cntbits++/8]<<=1) |= cbbd.interACflag; // acflag 1bit
 		if(cbbd.interACflag == 1)
 		{
 			for(int n=0; n<63; n++)
 				(tempFrame[cntbits++/8]<<=1) |= 0;
+
+			if (stats)
+				stats->totalAcBits[frm.numOfFrame] += 63;
 		}
 		else
 		{
@@ -5237,6 +5311,9 @@ void interBody(FrameData& frm, unsigned char* tempFrame, int& cntbits)
 			for(int n=0; n<ACbits; n++)
 				(tempFrame[cntbits++/8]<<=1) |= ACResult[n];
 			free(ACResult);
+
+			if (stats)
+				stats->totalAcBits[frm.numOfFrame] += ACbits;
 		}
 
 		DCbits = 0;
@@ -5247,11 +5324,17 @@ void interBody(FrameData& frm, unsigned char* tempFrame, int& cntbits)
 			(tempFrame[cntbits++/8]<<=1) |= DCResult[n];
 		free(DCResult);
 
+		if (stats)
+			stats->totalDcBits[frm.numOfFrame] += DCbits;
+
 		(tempFrame[cntbits++/8]<<=1) |= crbd.interACflag; // acflag 1bit
 		if(crbd.interACflag == 1)
 		{
 			for(int n=0; n<63; n++)
 				(tempFrame[cntbits++/8]<<=1) |= 0;
+
+			if (stats)
+				stats->totalAcBits[frm.numOfFrame] += 63;
 		}
 		else
 		{
@@ -5259,7 +5342,15 @@ void interBody(FrameData& frm, unsigned char* tempFrame, int& cntbits)
 			for(int n=0; n<ACbits; n++)
 				(tempFrame[cntbits++/8]<<=1) |= ACResult[n];
 			free(ACResult);
+
+			if (stats)
+				stats->totalAcBits[frm.numOfFrame] += ACbits;
 		}
+	}
+	if (stats) {
+		int i = frm.numOfFrame;
+		// Here we have bits for all
+		stats->totalEntropyBits[i] = stats->totalAcBits[i] + stats->totalDcBits[i] + stats->totalMvBits[i];
 	}
 }
 int DCentropy(int DCval, unsigned char *DCentropyResult)

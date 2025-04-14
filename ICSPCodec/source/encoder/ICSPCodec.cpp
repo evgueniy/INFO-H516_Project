@@ -29,7 +29,7 @@ void IcspCodec::init(int nframe, char* imageFname, int width, int height, int Qs
 	this->QstepAC = QstepAC;
 }
 	
-void IcspCodec::encoding(cmd_options_t* opt)
+void IcspCodec::encoding(cmd_options_t* opt, Statistics *stats)
 {	
 	if(opt->multi_thread_mode) // multi-thread mode
 	{	
@@ -38,7 +38,7 @@ void IcspCodec::encoding(cmd_options_t* opt)
 	}
 	else // single-thread mode
 	{
-		single_thread_encoding(frames, &YCbCr,opt->yuv_fname, opt->intra_period, QstepDC, QstepAC);
+		single_thread_encoding(frames, &YCbCr,opt->yuv_fname, opt->intra_period, QstepDC, QstepAC, stats);
 	}
 }
 

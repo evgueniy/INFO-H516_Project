@@ -16,9 +16,13 @@ int main(int argc, char *argv[])
 	memcpy(filename, yuv_fname, idx);
 	filename[idx] = 0;
 
+	Statistics stats {};
+
 	IcspCodec icspCodec;
 	icspCodec.init(options.total_frames, options.yuv_fname, 352, 288, options.QP_DC, options.QP_AC);
-	icspCodec.encoding(&options);
+	icspCodec.encoding(&options, &stats);
+
+	writeCsvData(stats, "test", options.intra_period, options.QP_DC, options.QP_AC);
 	
 	return 0;
 }
