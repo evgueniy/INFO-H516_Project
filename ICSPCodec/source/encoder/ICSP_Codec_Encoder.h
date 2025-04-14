@@ -211,6 +211,16 @@ struct header
 };
 #pragma pack(pop)
 
+struct Statistics {
+	// Assuming all videos are of 300 frames
+	static constexpr auto frameCount = 300;
+
+	unsigned totalAcBits[frameCount];
+	unsigned totalDcBits[frameCount];
+	unsigned totalMvBits[frameCount];
+	unsigned totalEntropyBits[frameCount];
+};
+
 class IcspCodec
 {
 public:
@@ -221,11 +231,11 @@ public:
 
 public:
 	void init(int nframe, char* imgfname, int width, int height, int QstepDC, int QstepAC);
-	void encoding(cmd_options_t* opt);
+	void encoding(cmd_options_t* opt, Statistics *stats = nullptr);
 	~IcspCodec(); 
 };
 /*Data collection functions*/
-void writeCsvData(const int nframe,char* fname, int intra_period, int QstepDC, int QstepAC);
+void writeCsvData(const Statistics &stats, char* fname, int intra_period, int QstepDC, int QstepAC);
 /* parsing command function */
 void set_command_options(int argc, char *argv[], cmd_options_t* cmd);
 
@@ -239,7 +249,7 @@ void multi_thread_encoding(cmd_options_t* opt, FrameData* frames);
 void *encoding_thread(void* arg);
 
 // single-thread functions
-void single_thread_encoding(FrameData* frames, YCbCr_t* YCbCr,char* fname, int intra_period, int QstepDC, int QstepAC);
+void single_thread_encoding(FrameData* frames, YCbCr_t* YCbCr,char* fname, int intra_period, int QstepDC, int QstepAC, Statistics *stats = nullptr);
 
 /* initiation function */
 int YCbCrLoad(IcspCodec &icC, char* fname, const int nframe, const int width, const int height);
@@ -308,11 +318,11 @@ void CzigzagScanning(Block8i *pQuanblck, int* dst, int blocksize);
 /* Entropy function */
 void entropyCoding(int* reordblck, int length);
 void entropyCoding(FrameData& frm, int predmode);
-void makebitstream(FrameData* frames, int nframes, int height, int width, int QstepDC, int QstepAC, int intraPeriod, int predmode);
+void makebitstream(FrameData* frames, int nframes, int height, int width, int QstepDC, int QstepAC, int intraPeriod, int predmode, Statistics *stats = nullptr);
 void headerinit(header& hd, int height, int width, int QstepDC, int QstepAC, int intraPeriod);
 void allintraBody(FrameData* frames, int nframes, FILE* fp);
-void intraBody(FrameData& frm, unsigned char* tempFrame, int& cntbits);
-void interBody(FrameData& frm, unsigned char* tempFrame, int& cntbits);
+void intraBody(FrameData& frm, unsigned char* tempFrame, int& cntbits, Statistics *stats = nullptr);
+void interBody(FrameData& frm, unsigned char* tempFrame, int& cntbits, Statistics *stats = nullptr);
 int DCentropy(int DCval, unsigned char *DCentropyResult);
 unsigned char* DCentropy(int DCval, int& nbits);
 int ACentropy(int* reordblck, unsigned char *ACentropyResult);
