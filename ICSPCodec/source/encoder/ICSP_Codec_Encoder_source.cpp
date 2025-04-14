@@ -8,6 +8,10 @@
 FILE* gfp;
 char filename[256];
 
+// The code is executed in build/[Debug|Release], so to have the
+// results in the root directory, we go two levels up.
+char resultDirectory[] = "../../results";
+
 #ifdef WIN_MODE
 /* benchmark function */
 namespace TimeCheck
@@ -80,11 +84,28 @@ void print_error_message(int err_type, char* func_name)
 	exit(-1);
 }
 
+void computePsnr(FrameData* frames,const int nframes,const int width, const int height ,Statistics *stats){
+	double mse = 0,temp = 0;
+	double total_mse = 0;
+	for(int frm = 0; frm< nframes; frm++){
+		mse = 0;
+		for(int i = 0; i<width*height;i++){
+			temp = (double)(frames[frm].Y[i] - frames[frm].reconstructedY[i]);
+			mse += (temp * temp);
+		}
+		total_mse += mse;
+		mse /= height*width;
+		stats->psnr[frm] = (mse > 0) ? 10 * log10((255 * 255)/mse) : INFINITY;
+	}
+	total_mse /= nframes * width * height;
+	stats->psnr[nframes] = (mse > 0) ? 10 * log10((255 * 255)/total_mse) : INFINITY;
+}
+
 void writeCsvData(const Statistics &stats, char* fname, int intra_period, int QstepDC, int QstepAC){
 	char fileName[256];
 
 	// File naming scheme original file name _ Qp _ Qp _ Intraperiod 
-	sprintf(fileName, "%s_%d_%d_%d.csv",fname,QstepDC,QstepAC,intra_period);
+	sprintf(fileName, "%s/%s_%d_%d_%d.csv",resultDirectory,fname,QstepDC,QstepAC,intra_period);
 	FILE *csv = fopen(fileName, "w");
 	if (!csv) {
         perror("Error opening the CSV file");
@@ -93,11 +114,11 @@ void writeCsvData(const Statistics &stats, char* fname, int intra_period, int Qs
 	char line[256];
 	//header
 	//todo add PSNR per frame in header as well in data
-    sprintf(line, "Frame;TotalDC;TotalAC;TotalMV;TotalEntropy\n");
+    sprintf(line, "Frame;TotalDC;TotalAC;TotalMV;TotalEntropy;PSNR;AvgPSNR\n");
     fputs(line, csv);
 	//data
 	for(int i = 0; i< stats.frameCount;i++){
-		sprintf(line, "%d;%u;%u;%u;%u\n", i, stats.totalDcBits[i], stats.totalAcBits[i], stats.totalMvBits[i], stats.totalEntropyBits[i]);
+		sprintf(line, "%d;%u;%u;%u;%u;%.2f;%.2f\n", i, stats.totalDcBits[i], stats.totalAcBits[i], stats.totalMvBits[i], stats.totalEntropyBits[i],stats.psnr[i], stats.psnr[stats.frameCount]);
         fputs(line, csv);
 	}
 	fclose(csv);
@@ -243,6 +264,7 @@ void single_thread_encoding(FrameData* frames, YCbCr_t* YCbCr,char* fname, int i
 	{
 		allintraPrediction(frames, YCbCr->nframe, QstepDC, QstepAC);
 		makebitstream(frames, YCbCr->nframe, YCbCr->height, YCbCr->width, QstepDC, QstepAC, intra_period, INTRA, stats);
+		computePsnr(frames,YCbCr->nframe,YCbCr->width, YCbCr->height,stats);
 		checkResultFrames(frames, fname,YCbCr->width, YCbCr->height, YCbCr->nframe, QstepDC, QstepAC, intra_period, INTRA, SAVE_YUV);
 	}
 	else
@@ -263,6 +285,7 @@ void single_thread_encoding(FrameData* frames, YCbCr_t* YCbCr,char* fname, int i
 			print_frame_end_message(n, frame_type);
 		}		
 		makebitstream(frames, YCbCr->nframe, YCbCr->height, YCbCr->width, QstepDC, QstepAC, intra_period, INTER, stats);
+		computePsnr(frames,YCbCr->nframe,YCbCr->width, YCbCr->height,stats);
 		checkResultFrames(frames, fname,YCbCr->width, YCbCr->height,YCbCr->nframe, QstepDC, QstepAC, intra_period, INTER, SAVE_YUV);
 	}
 }
@@ -4875,7 +4898,7 @@ void makebitstream(FrameData* frames, int nframes, int height, int width, int Qs
 	header hd;
 	headerinit(hd, height, width, QstepDC, QstepAC, intraPeriod);
 	char compCIFfname[256];
-	sprintf(compCIFfname, "%s_compCIF_%d_%d_%d.bin", filename, QstepDC, QstepAC, intraPeriod);
+	sprintf(compCIFfname, "%s/%s_compCIF_%d_%d_%d.bin", resultDirectory, filename, QstepDC, QstepAC, intraPeriod);
 	#pragma pack(push, 1)
 	FILE* fp = fopen(compCIFfname, "wb");
 	if(fp==NULL)
