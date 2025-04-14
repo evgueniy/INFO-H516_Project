@@ -4889,7 +4889,7 @@ void makebitstream(FrameData* frames, int nframes, int height, int width, int Qs
 	/* body */
 	if(predmode==INTRA)
 	{
-		allintraBody(frames, nframes, fp);
+		allintraBody(frames, nframes, fp, stats);
 	}
 	else if(predmode==INTER)
 	{
@@ -4943,7 +4943,7 @@ void headerinit(header& hd, int height, int width, int QstepDC, int QstepAC, int
 		(hd.outro <<= 1) |= 0;	// last bits = 0;
 	}
 }
-void allintraBody(FrameData* frames, int nframes, FILE* fp)
+void allintraBody(FrameData* frames, int nframes, FILE* fp, Statistics *stats)
 {
 	int totalblck = frames->nblocks16;
 	int nblock8   = frames->nblocks8;
@@ -4982,6 +4982,9 @@ void allintraBody(FrameData* frames, int nframes, FILE* fp)
 				for(int n=0; n<DCbits; n++)
 					(frame[cntbits++/8]<<=1) |= DCResult[n];
 				free(DCResult);
+
+				if (stats)
+					stats->totalDcBits[frames[nfrm].numOfFrame] += DCbits;
 								
 				(frame[cntbits++/8]<<=1) |= bd.intraACflag[nblck8]; // acflag 1bit
 				
@@ -4989,6 +4992,9 @@ void allintraBody(FrameData* frames, int nframes, FILE* fp)
 				{
 					for(int n=0; n<63; n++)
 						(frame[cntbits++/8]<<=1) |= 0;	
+
+					if (stats)
+						stats->totalAcBits[frames[nfrm].numOfFrame] += 63;
 				}
 				else
 				{
@@ -4997,6 +5003,9 @@ void allintraBody(FrameData* frames, int nframes, FILE* fp)
 						(frame[cntbits++/8]<<=1) |= ACResult[n];
 				
 					free(ACResult);
+
+					if (stats)
+						stats->totalAcBits[frames[nfrm].numOfFrame] += ACbits;
 				}
 			}
 			// Cb Cr 8x8 ����
@@ -5011,12 +5020,18 @@ void allintraBody(FrameData* frames, int nframes, FILE* fp)
 				(frame[cntbits++/8]<<=1) |= DCResult[n];
 			free(DCResult);
 
+			if (stats)
+				stats->totalDcBits[frames[nfrm].numOfFrame] += DCbits;
+
 			(frame[cntbits++/8]<<=1) |= cbbd.intraACflag; // acflag 1bit
 
 			if(cbbd.intraACflag==1)
 			{
 				for(int n=0; n<63; n++)
 					(frame[cntbits++/8]<<=1) |= 0;	
+
+				if (stats)
+					stats->totalAcBits[frames[nfrm].numOfFrame] += 63;
 			}
 			else
 			{
@@ -5025,6 +5040,9 @@ void allintraBody(FrameData* frames, int nframes, FILE* fp)
 					(frame[cntbits++/8]<<=1) |= ACResult[n];
 			
 				free(ACResult);
+
+				if (stats)
+					stats->totalAcBits[frames[nfrm].numOfFrame] += ACbits;
 			}
 			DCbits = 0;
 			ACbits = 0;
@@ -5034,11 +5052,17 @@ void allintraBody(FrameData* frames, int nframes, FILE* fp)
 				(frame[cntbits++/8]<<=1) |= DCResult[n];
 			free(DCResult);
 
+			if (stats)
+				stats->totalDcBits[frames[nfrm].numOfFrame] += DCbits;
+
 			(frame[cntbits++/8]<<=1) |= crbd.intraACflag; // acflag 1bit
 			if(crbd.intraACflag==1)
 			{
 				for(int n=0; n<63; n++)
 					(frame[cntbits++/8]<<=1) |= 0;	
+
+				if (stats)
+					stats->totalAcBits[frames[nfrm].numOfFrame] += 63;
 			}
 			else
 			{
@@ -5046,8 +5070,16 @@ void allintraBody(FrameData* frames, int nframes, FILE* fp)
 				for(int n=0; n<ACbits; n++)
 					(frame[cntbits++/8]<<=1) |= ACResult[n];
 				free(ACResult);
+
+				if (stats)
+					stats->totalAcBits[frames[nfrm].numOfFrame] += ACbits;
 			}
 		}	
+		if (stats) {
+			int i = frames[nfrm].numOfFrame;
+			// We do not have MV bits here as it’s an intra frame
+			stats->totalEntropyBits[i] = stats->totalAcBits[i] + stats->totalDcBits[i];
+		}
 	}
 	fwrite(frame, (cntbits/8)+1, 1, fp); 
 	free(frame);

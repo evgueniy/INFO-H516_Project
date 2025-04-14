@@ -320,7 +320,7 @@ void entropyCoding(int* reordblck, int length);
 void entropyCoding(FrameData& frm, int predmode);
 void makebitstream(FrameData* frames, int nframes, int height, int width, int QstepDC, int QstepAC, int intraPeriod, int predmode, Statistics *stats = nullptr);
 void headerinit(header& hd, int height, int width, int QstepDC, int QstepAC, int intraPeriod);
-void allintraBody(FrameData* frames, int nframes, FILE* fp);
+void allintraBody(FrameData* frames, int nframes, FILE* fp, Statistics *stats = nullptr);
 void intraBody(FrameData& frm, unsigned char* tempFrame, int& cntbits, Statistics *stats = nullptr);
 void interBody(FrameData& frm, unsigned char* tempFrame, int& cntbits, Statistics *stats = nullptr);
 int DCentropy(int DCval, unsigned char *DCentropyResult);
