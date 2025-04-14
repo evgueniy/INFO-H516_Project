@@ -10,4 +10,6 @@ ICSPCodec/build/Release/Makefile
 ICSPCodec/build/Release/ICSPCodec
 *.yuv
 *.bin
+*.png
+*.csv
 .vscode/
