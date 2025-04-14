@@ -8,6 +8,10 @@
 FILE* gfp;
 char filename[256];
 
+// The code is executed in build/[Debug|Release], so to have the
+// results in the root directory, we go two levels up.
+char resultDirectory[] = "../../results";
+
 #ifdef WIN_MODE
 /* benchmark function */
 namespace TimeCheck
@@ -84,7 +88,7 @@ void writeCsvData(const Statistics &stats, char* fname, int intra_period, int Qs
 	char fileName[256];
 
 	// File naming scheme original file name _ Qp _ Qp _ Intraperiod 
-	sprintf(fileName, "%s_%d_%d_%d.csv",fname,QstepDC,QstepAC,intra_period);
+	sprintf(fileName, "%s/%s_%d_%d_%d.csv",resultDirectory,fname,QstepDC,QstepAC,intra_period);
 	FILE *csv = fopen(fileName, "w");
 	if (!csv) {
         perror("Error opening the CSV file");
@@ -4875,7 +4879,7 @@ void makebitstream(FrameData* frames, int nframes, int height, int width, int Qs
 	header hd;
 	headerinit(hd, height, width, QstepDC, QstepAC, intraPeriod);
 	char compCIFfname[256];
-	sprintf(compCIFfname, "%s_compCIF_%d_%d_%d.bin", filename, QstepDC, QstepAC, intraPeriod);
+	sprintf(compCIFfname, "%s/%s_compCIF_%d_%d_%d.bin", resultDirectory, filename, QstepDC, QstepAC, intraPeriod);
 	#pragma pack(push, 1)
 	FILE* fp = fopen(compCIFfname, "wb");
 	if(fp==NULL)
