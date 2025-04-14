@@ -214,7 +214,7 @@ struct header
 struct Statistics {
 	// Assuming all videos are of 300 frames
 	static constexpr auto frameCount = 300;
-
+	double   psnr[frameCount+1];
 	unsigned totalAcBits[frameCount];
 	unsigned totalDcBits[frameCount];
 	unsigned totalMvBits[frameCount];
@@ -235,6 +235,7 @@ public:
 	~IcspCodec(); 
 };
 /*Data collection functions*/
+void computePsnr(FrameData* frames,const int nframes,const int width, const int height ,Statistics *stats);
 void writeCsvData(const Statistics &stats, char* fname, int intra_period, int QstepDC, int QstepAC);
 /* parsing command function */
 void set_command_options(int argc, char *argv[], cmd_options_t* cmd);
