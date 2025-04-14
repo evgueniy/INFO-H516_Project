@@ -1,6 +1,11 @@
 #include "ICSP_Codec_Encoder.h"
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <unistd.h>
 
 extern char filename[256];
+extern char resultDirectory[];
+
 int main(int argc, char *argv[])
 {	
 	cmd_options_t options;	
@@ -31,7 +36,11 @@ int main(int argc, char *argv[])
 	memcpy(filename, start, size);
 	filename[size] = 0;
 
-	printf("%s", filename);
+	// Create directory if nonexistent
+	struct stat st = {0};
+	if (stat(resultDirectory, &st) == -1) {
+    mkdir(resultDirectory, 0700);
+	}
 
 	Statistics stats {};
 
