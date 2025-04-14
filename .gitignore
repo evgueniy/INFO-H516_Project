@@ -11,4 +11,7 @@ ICSPCodec/build/Release/ICSPCodec
 ICSPCodec/results/
 *.yuv
 *.bin
+*.png
+*.csv
 .vscode/
+
