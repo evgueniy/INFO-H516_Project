@@ -1,6 +1,7 @@
 # INFO-H516_Project
 ## Recquirements
-Pandas library with python3
+python3 libraries: pandas, bjontegaard
+will do recquirement.txt after
 ## QP Values
 2 6 20 42
 ## Output
