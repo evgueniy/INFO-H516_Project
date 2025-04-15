@@ -44,8 +44,8 @@ cd ./ICSPCodec/build/Debug
 ./ICSPCodec  -i  "../../data/table_cif(352X288)_300f.yuv"  -n  300  -q  16  --intraPeriod  8  --EnMultiThread  0
 ```
 
-Running it produces the follwing files found under `./results` (the example
-file names are resulting from above invocation):
+Running it produces the following files found under `./results` (the example
+file names are resulting from the above invocation):
 
 -  **Encoded Binary File:**  `table_comCIF_16_16_8.bin`
 -  **Decoded YUV File:**  `table_cif(352X288)_300f.yuv_16_16_8_decoded.yuv` (not in `.results` currently)
