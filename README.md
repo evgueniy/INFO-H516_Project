@@ -48,7 +48,7 @@ Running it produces the following files found under `./results` (the example
 file names are resulting from the above invocation):
 
 -  **Encoded Binary File:**  `table_comCIF_16_16_8.bin`
--  **Decoded YUV File:**  `table_cif(352X288)_300f.yuv_16_16_8_decoded.yuv` (not in `.results` currently)
+-  **Decoded YUV File:**  `table_cif(352X288)_300f.yuv_16_16_8_decoded.yuv` (not in `./results` currently)
 -  **Statistics File:**  `table_16_16_8.csv`
 
 <!-- ## QP Values -->
