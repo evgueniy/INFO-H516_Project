@@ -90,7 +90,7 @@ void computePsnr(FrameData* frames,const int nframes,const int width, const int 
 	for(int frm = 0; frm< nframes; frm++){
 		mse = 0;
 		for(int i = 0; i<width*height;i++){
-			temp = (double)(frames[frm].Y[i] - frames[frm].reconstructedY[i]);
+			temp = (double)((int)frames[frm].Y[i] - (int)frames[frm].reconstructedY[i]);
 			mse += (temp * temp);
 		}
 		total_mse += mse;
