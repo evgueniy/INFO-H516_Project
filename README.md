@@ -1,4 +1,6 @@
 # INFO-H516_Project
+## QP Values
+2 6 20 42
 ## Output
 The following command:
 ```bash
