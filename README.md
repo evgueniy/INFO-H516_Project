@@ -1,4 +1,6 @@
 # INFO-H516_Project
+## Recquirements
+Pandas library with python3
 ## QP Values
 2 6 20 42
 ## Output
