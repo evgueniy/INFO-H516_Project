@@ -9,7 +9,7 @@ members. The primary task is to achieve compression improvements over the
 basic version of MPEG-1, but it also includes analysis of the results and
 regular meetings held in rougly the same vein as the real ones.
 
-## Recquirements
+## Requirements
 
 For the codec no additional requirements are needed besides a C++ compiler
 and `glibc`.
