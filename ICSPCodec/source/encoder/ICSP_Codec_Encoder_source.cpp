@@ -144,6 +144,10 @@ void writeHistogramStats(const Statistics &stats, char* fname, int intra_period,
 		sprintf(line, "DC;%u;%u\n", i, stats.dcNbitsHistogram[i]);
     fputs(line, csv);
 	}
+	for(int i = 0; i< 32;i++){
+		sprintf(line, "AC;%u;%u\n", i, stats.acNbitsHistogram[i]);
+    fputs(line, csv);
+	}
 	fclose(csv);
 }
 
@@ -5057,7 +5061,7 @@ void allintraBody(FrameData* frames, int nframes, FILE* fp, Statistics *stats)
 				}
 				else
 				{
-					ACResult = ACentropy(bd.intraReorderedblck8[nblck8], ACbits); // AC entropy result ?bits; 63 values
+					ACResult = ACentropy(bd.intraReorderedblck8[nblck8], ACbits, stats); // AC entropy result ?bits; 63 values
 					for(int n=0; n<ACbits; n++)
 						(frame[cntbits++/8]<<=1) |= ACResult[n];
 				
@@ -5096,7 +5100,7 @@ void allintraBody(FrameData* frames, int nframes, FILE* fp, Statistics *stats)
 			}
 			else
 			{
-				ACResult = ACentropy(cbbd.intraReorderedblck, ACbits); // AC entropy result ?bits; 63 values
+				ACResult = ACentropy(cbbd.intraReorderedblck, ACbits, stats); // AC entropy result ?bits; 63 values
 				for(int n=0; n<ACbits; n++)
 					(frame[cntbits++/8]<<=1) |= ACResult[n];
 			
@@ -5129,7 +5133,7 @@ void allintraBody(FrameData* frames, int nframes, FILE* fp, Statistics *stats)
 			}
 			else
 			{
-				ACResult = ACentropy(crbd.intraReorderedblck, ACbits); // AC entropy result ?bits; 63 values
+				ACResult = ACentropy(crbd.intraReorderedblck, ACbits, stats); // AC entropy result ?bits; 63 values
 				for(int n=0; n<ACbits; n++)
 					(frame[cntbits++/8]<<=1) |= ACResult[n];
 				free(ACResult);
@@ -5204,7 +5208,7 @@ void intraBody(FrameData& frm, unsigned char* tempFrame, int& cntbits, Statistic
 			}
 			else
 			{
-				ACResult = ACentropy(bd.intraReorderedblck8[nblck8], ACbits); // AC entropy result ?bits; 63 values
+				ACResult = ACentropy(bd.intraReorderedblck8[nblck8], ACbits, stats); // AC entropy result ?bits; 63 values
 				for(int n=0; n<ACbits; n++)
 					(tempFrame[cntbits++/8]<<=1) |= ACResult[n];
 				free(ACResult);
@@ -5242,7 +5246,7 @@ void intraBody(FrameData& frm, unsigned char* tempFrame, int& cntbits, Statistic
 		}
 		else
 		{
-			ACResult = ACentropy(cbbd.intraReorderedblck, ACbits); // AC entropy result ?bits; 63 values
+			ACResult = ACentropy(cbbd.intraReorderedblck, ACbits, stats); // AC entropy result ?bits; 63 values
 			for(int n=0; n<ACbits; n++)
 				(tempFrame[cntbits++/8]<<=1) |= ACResult[n];
 			free(ACResult);
@@ -5275,7 +5279,7 @@ void intraBody(FrameData& frm, unsigned char* tempFrame, int& cntbits, Statistic
 		}
 		else
 		{
-			ACResult = ACentropy(crbd.intraReorderedblck, ACbits); // AC entropy result ?bits; 63 values
+			ACResult = ACentropy(crbd.intraReorderedblck, ACbits, stats); // AC entropy result ?bits; 63 values
 			for(int n=0; n<ACbits; n++)
 				(tempFrame[cntbits++/8]<<=1) |= ACResult[n];
 			free(ACResult);
@@ -5349,7 +5353,7 @@ void interBody(FrameData& frm, unsigned char* tempFrame, int& cntbits, Statistic
 			}
 			else
 			{
-				ACResult = ACentropy(bd.interReorderedblck8[nblck8], ACbits); // AC entropy result ?bits; 63 values
+				ACResult = ACentropy(bd.interReorderedblck8[nblck8], ACbits, stats); // AC entropy result ?bits; 63 values
 				for(int n=0; n<ACbits; n++)
 					(tempFrame[cntbits++/8]<<=1) |= ACResult[n];
 				free(ACResult);
@@ -5388,7 +5392,7 @@ void interBody(FrameData& frm, unsigned char* tempFrame, int& cntbits, Statistic
 		}
 		else
 		{
-			ACResult = ACentropy(cbbd.interReorderedblck, ACbits); // AC entropy result ?bits; 63 values
+			ACResult = ACentropy(cbbd.interReorderedblck, ACbits, stats); // AC entropy result ?bits; 63 values
 			for(int n=0; n<ACbits; n++)
 				(tempFrame[cntbits++/8]<<=1) |= ACResult[n];
 			free(ACResult);
@@ -5421,7 +5425,7 @@ void interBody(FrameData& frm, unsigned char* tempFrame, int& cntbits, Statistic
 		}
 		else
 		{
-			ACResult = ACentropy(crbd.interReorderedblck, ACbits); // AC entropy result ?bits; 63 values
+			ACResult = ACentropy(crbd.interReorderedblck, ACbits, stats); // AC entropy result ?bits; 63 values
 			for(int n=0; n<ACbits; n++)
 				(tempFrame[cntbits++/8]<<=1) |= ACResult[n];
 			free(ACResult);
@@ -5993,7 +5997,7 @@ int ACentropy(int* reordblck, unsigned char *ACentropyResult)
 
 	return nbits;
 }
-unsigned char* ACentropy(int* reordblck, int& nbits)
+unsigned char* ACentropy(int* reordblck, int& nbits, Statistics* stats)
 {
 	int value  = 0;
 	int sign   = 0;
@@ -6001,6 +6005,8 @@ unsigned char* ACentropy(int* reordblck, int& nbits)
 	int c      = 0;
 	int idx    = 0;
 	int length = 63; // except DC value of total 64 values
+
+	int lastNbits = 0;
 
 	for(int i=0; i<length; i++)
 	{
@@ -6018,6 +6024,11 @@ unsigned char* ACentropy(int* reordblck, int& nbits)
 		else if(value>=512  &&  value<=1023) nbits+=18;
 		else if(value>=1024 &&  value<=2047) nbits+=20;
 		else if(value>=2048)				 nbits+=22;
+
+		if (stats) {
+			stats->acNbitsHistogram[nbits-lastNbits] += 1;
+			lastNbits = nbits;
+		}
 	}
 
 
