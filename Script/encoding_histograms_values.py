@@ -1,5 +1,6 @@
 import sys
 import os
+from pathlib import Path
 import pandas as pd
 import matplotlib.pyplot as plt
 
@@ -16,6 +17,7 @@ def plot_encoding_histogram(hist_path):
 
     # Create plt
     fig, axs = plt.subplots(2, 2, figsize=(10, 6))
+    fig.suptitle(f'Value histograms for {Path(hist_path).stem}', fontsize=16)
 
     # Plot data
     for ax, (label, df) in zip(axs.flatten(), df.groupby('Type')):
@@ -23,7 +25,7 @@ def plot_encoding_histogram(hist_path):
         fdf = df[df['Value'] <= biggest]
         ax.set_xlabel("Value")
         ax.set_ylabel("Number of values encoded")
-        ax.set_title(f"Histogram for {label}")
+        ax.set_title(f"{label}")
         ax.bar(fdf["Value"], fdf["Count"])
 
     plt.tight_layout()
