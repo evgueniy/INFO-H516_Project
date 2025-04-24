@@ -75,9 +75,13 @@ typedef struct
 
 typedef struct 
 {
+	// Big block size, 16x16
 	int blocksize1;
+	// Small block size, 8x8
 	int blocksize2;
+	// Original Y values, in blocks of size `blocksize1`
 	Block16u *originalblck16;
+	// Original Y values, in blocks of size `blocksize2`
 	Block8u **originalblck8;
 	Block8i **intraErrblck;
 	int DPCMmodePred[4];
@@ -131,23 +135,38 @@ typedef struct
 
 typedef struct
 {
-	unsigned char *Y;	// Y  ������ ����; ���߿� �����ص� �ǰڴµ�?
-	unsigned char *Cb;	// Cb ������ ����; ���߿� �����ص� �ǰڴµ�?
-	unsigned char *Cr;	// Cr ������ ����; ���߿� �����ص� �ǰڴµ�?
-	BlockData *blocks;	// �� �����ӿ� ���� ���� ����; ����ü �迭�� ����
+	// Raw Y values
+	unsigned char *Y;
+	// Raw U values
+	unsigned char *Cb;
+	// Raw V values
+	unsigned char *Cr;
+	// Y values in blocks of 16x16 and 8x8
+	BlockData *blocks;
+	// U values in blocks of 8x8
 	CBlockData *Cbblocks;
+	// V values in blocks of 8x8
 	CBlockData *Crblocks;
 
-	int nblocks16;		// �ٸ�����ü�� ��ġ�ٲ�� ����
+	// Total number of 16x16 blocks
+	int nblocks16;
+	// Number of 8x8 blocks in one 16x16 block (despite the var name, see initialization in `splitBlocks`)
 	int nblocks8;
+	// Number of 16x16 blocks in width
 	int splitWidth;
+	// Number of 16x16 blocks in height
 	int splitHeight;
 	int numOfFrame;
 		
+	// Number of UV values in width
 	int CbCrWidth;
+	// Number of UV values in height
 	int CbCrHeight;
+	// Number of UV blocks in width
 	int CbCrSplitWidth;
+	// Number of UV blocks in height
 	int CbCrSplitHeight;
+	// Total UV values (despite the var name, see initialization in `splitBlocks`)
 	int totalcbcrblck;
 
 	unsigned char *reconstructedY;	// ���� �������� �����ϰų� ����ϰ� ���� ������ �����Ǿ��� �������� free �ص��� ��

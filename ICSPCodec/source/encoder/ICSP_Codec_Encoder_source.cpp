@@ -354,6 +354,8 @@ int splitFrames(IcspCodec &icC)
 
 	return 0;
 }
+// \param blocksize1 Y blocks, typically 16x16
+// \param blocksize2 UV blocks, typically 8x8
 int splitBlocks(IcspCodec &icC, int blocksize1, int blocksize2)
 {
 	int width  = icC.YCbCr.width;
@@ -377,10 +379,12 @@ int splitBlocks(IcspCodec &icC, int blocksize1, int blocksize2)
 		return -1;
 	}
 
-	//blocksize1xblocksize1�� blocksize2xblocksize2�� �ɰ� Ƚ��
+	// Number of block2 inside a block1
 	int nblock2Ofblock1 = (int) (blocksize1*blocksize1) / (blocksize2*blocksize2);
 
 
+	// We divide by 2 because we’re in YUV 4:2:0, so for every square of 4 pixels
+	// we store 1 value of Cb and 1 value of Cr, while having 4 of Y
 	int CbCrSplitWidth  = (icC.YCbCr.width  / 2) / blocksize2;
 	int CbCrSplitHeight = (icC.YCbCr.height / 2) / blocksize2;
 	int CbCrWidth  = (icC.YCbCr.width   / 2);
@@ -389,7 +393,7 @@ int splitBlocks(IcspCodec &icC, int blocksize1, int blocksize2)
 	int cntx=0, cnty=0;
 	for(int numframe=0; numframe<nframe; numframe++)
 	{
-		/*frames �ȿ� �ִ� blocks �ʱ�ȭ*/
+		// Number of macro-blocks, of size 16x16
 		icC.frames[numframe].blocks = (BlockData *) malloc(sizeof(BlockData)*splitWidth*splitHeight);	// �Ҹ��ڿ��� ��ȯ�����
 		if(icC.frames[numframe].blocks == NULL)
 		{
@@ -398,14 +402,16 @@ int splitBlocks(IcspCodec &icC, int blocksize1, int blocksize2)
 		}
 
 		FrameData &frm = icC.frames[numframe];
-		// Y frames
+		// Y frames, fill with original values
 		for(int numblock=0; numblock<totalblck; numblock++)
 		{
 			BlockData &bd = icC.frames[numframe].blocks[numblock];			
 
+			// Index of upper left pixel of the current block
 			cntx=(numblock%splitWidth)*blocksize1;
 			cnty=(numblock/splitWidth)*blocksize1;
-			// 16x16 ����ȭ	
+
+			// Fill with Y values of 16x16 block
 			bd.originalblck16 = (Block16u*) malloc(sizeof(Block16u));
 			for(int y=0; y<blocksize1; y++)
 			{
@@ -416,11 +422,13 @@ int splitBlocks(IcspCodec &icC, int blocksize1, int blocksize2)
 				}				
 			}
 
-			// 8x8 ����ȭ
+			// Allocate ptrs and blocks for 8x8 blocks
 			bd.originalblck8 = (Block8u**)malloc(sizeof(Block8u*)*nblock2Ofblock1);
 			for(int i=0; i<nblock2Ofblock1; i++)
 				bd.originalblck8[i] = (Block8u*)malloc(sizeof(Block8u));
 
+			// The same data is essentially stored as in the 16x16 blocks, but
+			// in 4 smaller blocks of 8x8. Still only the Y values
 			for(int k=0; k<nblock2Ofblock1; k++)
 			{
 				for(int i=0; i<blocksize2; i++)
@@ -442,6 +450,7 @@ int splitBlocks(IcspCodec &icC, int blocksize1, int blocksize2)
 			bd.blocksize1 = blocksize1;
 			bd.blocksize2 = blocksize2;
 		}
+
 		frm.nblocks16   = splitWidth*splitHeight;	// nblockxx �ɹ��� FrameData���� �ٸ� ����ü�� �ٲ��� ��ġ ����
 		frm.nblocks8    = nblock2Ofblock1;
 		frm.splitWidth  = splitWidth;
@@ -4917,7 +4926,9 @@ void makebitstream(FrameData* frames, int nframes, int height, int width, int Qs
 	else if(predmode==INTER)
 	{
 		int cntbits = 0;
+		// Size of 8 bits (1 byte) for every pixel
 		int maxbits = frames->splitHeight * frames->splitWidth * frames->blocks->blocksize1 * frames->blocks->blocksize1 * 8 * nframes;
+		// Allocate this number in bytes
 		unsigned char* tempFrame = (unsigned char*)malloc(sizeof(unsigned char)*(maxbits/8));
 		if(tempFrame==NULL)
 		{
@@ -5119,6 +5130,14 @@ void intraBody(FrameData& frm, unsigned char* tempFrame, int& cntbits, Statistic
 
 	unsigned char* DCResult = NULL;
 	unsigned char* ACResult = NULL;
+
+	// Note: when addressing with `cntbits`, it is always divided by 8 because
+	// we’re writing in a byte array (or unsigned char array) and so we’re
+  // addressing the bytes, not the bits.
+  //
+  // By the nature of integer division, when one byte is fully written to,
+  // the next is automatically addressed next time:
+  //   frm[cntbits++/8] |= 0
 	
 	//cntbits = 0;
 	//cout << "intra frame bits: " << cntbits << endl;
@@ -5558,7 +5577,9 @@ int DCentropy(int DCval, unsigned char *DCentropyResult)
 }
 unsigned char* DCentropy(int DCval, int& nbits)
 {
+	// Absolute value
 	int value = 0;
+	// Sign, 0 if negative and 1 if positive
 	int sign  = 0;
 	int exp   = 0;
 	int c     = 0;
@@ -5581,6 +5602,7 @@ unsigned char* DCentropy(int DCval, int& nbits)
 	else if(value>=1024 &&  value<=2047) nbits=20;
 	else if(value>=2048)				 nbits=22;
 
+	// One unsigned char per bit
 	unsigned char* DCentropyResult = (unsigned char*)malloc(sizeof(unsigned char)*nbits);	
 	
 	if(DCentropyResult==NULL)
