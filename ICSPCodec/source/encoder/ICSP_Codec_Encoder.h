@@ -240,10 +240,18 @@ struct Statistics {
 	unsigned totalEntropyBits[frameCount];
 
 	// Values range from 2 to 22
-	unsigned dcNbitsHistogram[32];
-	unsigned acNbitsHistogram[32];
-	unsigned mvxNbitsHistogram[32];
-	unsigned mvyNbitsHistogram[32];
+	static constexpr auto histNbitsSize = 24;
+	unsigned dcNbitsHistogram[histNbitsSize];
+	unsigned acNbitsHistogram[histNbitsSize];
+	unsigned mvxNbitsHistogram[histNbitsSize];
+	unsigned mvyNbitsHistogram[histNbitsSize];
+
+	// Values range from 0 to infinity but we cap them at 2048
+	static constexpr auto histValueSize = 2049;
+	unsigned dcValuesHistogram[histValueSize];
+	unsigned acValuesHistogram[histValueSize];
+	unsigned mvxValuesHistogram[histValueSize];
+	unsigned mvyValuesHistogram[histValueSize];
 };
 
 class IcspCodec
@@ -262,7 +270,8 @@ public:
 /*Data collection functions*/
 void computePsnr(FrameData* frames,const int nframes,const int width, const int height ,Statistics *stats);
 void writeFrameStats(const Statistics &stats, char* fname, int intra_period, int QstepDC, int QstepAC);
-void writeHistogramStats(const Statistics &stats, char* fname, int intra_period, int QstepDC, int QstepAC);
+void writeHistogramBitsizeStats(const Statistics &stats, char* fname, int intra_period, int QstepDC, int QstepAC);
+void writeHistogramValueStats(const Statistics &stats, char* fname, int intra_period, int QstepDC, int QstepAC);
 /* parsing command function */
 void set_command_options(int argc, char *argv[], cmd_options_t* cmd);
 

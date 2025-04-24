@@ -124,7 +124,7 @@ void writeFrameStats(const Statistics &stats, char* fname, int intra_period, int
 	fclose(csv);
 }
 
-void writeHistogramStats(const Statistics &stats, char* fname, int intra_period, int QstepDC, int QstepAC){
+void writeHistogramBitsizeStats(const Statistics &stats, char* fname, int intra_period, int QstepDC, int QstepAC){
 	char fileName[256];
 
 	// File naming scheme original file name _ Qp _ Qp _ Intraperiod 
@@ -139,21 +139,59 @@ void writeHistogramStats(const Statistics &stats, char* fname, int intra_period,
 	//todo add PSNR per frame in header as well in data
   sprintf(line, "Type;BitSize;Count\n");
   fputs(line, csv);
+
+  int size = stats.histNbitsSize;
 	//data
-	for(int i = 0; i< 32;i++){
+	for(int i = 0; i< size;i++){
 		sprintf(line, "DC;%u;%u\n", i, stats.dcNbitsHistogram[i]);
     fputs(line, csv);
 	}
-	for(int i = 0; i< 32;i++){
+	for(int i = 0; i< size;i++){
 		sprintf(line, "AC;%u;%u\n", i, stats.acNbitsHistogram[i]);
     fputs(line, csv);
 	}
-	for(int i = 0; i< 32;i++){
+	for(int i = 0; i< size;i++){
 		sprintf(line, "MVX;%u;%u\n", i, stats.mvxNbitsHistogram[i]);
     fputs(line, csv);
 	}
-	for(int i = 0; i< 32;i++){
+	for(int i = 0; i< size;i++){
 		sprintf(line, "MVY;%u;%u\n", i, stats.mvyNbitsHistogram[i]);
+    fputs(line, csv);
+	}
+	fclose(csv);
+}
+
+void writeHistogramValueStats(const Statistics &stats, char* fname, int intra_period, int QstepDC, int QstepAC){
+	char fileName[256];
+
+	// File naming scheme original file name _ Qp _ Qp _ Intraperiod 
+	sprintf(fileName, "%s/hist_value_%s_%d_%d_%d.csv",resultDirectory,fname,QstepDC,QstepAC,intra_period);
+	FILE *csv = fopen(fileName, "w");
+	if (!csv) {
+        perror("Error opening the CSV file");
+        exit(1);
+    }
+	char line[256];
+	//header
+  sprintf(line, "Type;Value;Count\n");
+  fputs(line, csv);
+
+  int size = stats.histValueSize;
+	//data
+	for(int i = 0; i< size;i++){
+		sprintf(line, "DC;%u;%u\n", i, stats.dcValuesHistogram[i]);
+    fputs(line, csv);
+	}
+	for(int i = 0; i< size;i++){
+		sprintf(line, "AC;%u;%u\n", i, stats.acValuesHistogram[i]);
+    fputs(line, csv);
+	}
+	for(int i = 0; i< size;i++){
+		sprintf(line, "MVX;%u;%u\n", i, stats.mvxValuesHistogram[i]);
+    fputs(line, csv);
+	}
+	for(int i = 0; i< size;i++){
+		sprintf(line, "MVY;%u;%u\n", i, stats.mvyValuesHistogram[i]);
     fputs(line, csv);
 	}
 	fclose(csv);
@@ -5657,6 +5695,7 @@ unsigned char* DCentropy(int DCval, int& nbits, Statistics* stats)
 
 	if (stats) {
 		stats->dcNbitsHistogram[nbits] += 1;
+		stats->dcValuesHistogram[min(value, 2048)] += 1;
 	}
 
 	// One unsigned char per bit
@@ -6039,6 +6078,7 @@ unsigned char* ACentropy(int* reordblck, int& nbits, Statistics* stats)
 
 		if (stats) {
 			stats->acNbitsHistogram[nbits-lastNbits] += 1;
+			stats->acValuesHistogram[min(value, 2048)] += 1;
 			lastNbits = nbits;
 		}
 	}
@@ -6262,6 +6302,8 @@ unsigned char* MVentropy(MotionVector mv, int& nbitsx, int& nbitsy, Statistics* 
 	if (stats) {
 		stats->mvxNbitsHistogram[nbitsx] += 1;
 		stats->mvyNbitsHistogram[nbitsy] += 1;
+		stats->mvxValuesHistogram[min(xValue, 2048)] += 1;
+		stats->mvyValuesHistogram[min(yValue, 2048)] += 1;
 	}
 	
 	unsigned char* MVentropyResult = (unsigned char*)malloc(sizeof(unsigned char)*(nbitsx+nbitsy));

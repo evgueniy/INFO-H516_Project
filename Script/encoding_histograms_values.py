@@ -3,6 +3,13 @@ import os
 import pandas as pd
 import matplotlib.pyplot as plt
 
+def find_biggest(df):
+    biggest = -1
+    for _, row in df.iterrows():
+        if row.Count > 0:
+            biggest = max(row.Value, biggest)
+    return biggest
+
 def plot_encoding_histogram(hist_path):
     df = pd.read_csv(hist_path, sep=";", decimal=".")
     # print(dfs.head())
@@ -12,10 +19,12 @@ def plot_encoding_histogram(hist_path):
 
     # Plot data
     for ax, (label, df) in zip(axs.flatten(), df.groupby('Type')):
-        ax.set_xlabel("Size (bits)")
+        biggest = find_biggest(df)
+        fdf = df[df['Value'] <= biggest]
+        ax.set_xlabel("Value")
         ax.set_ylabel("Number of values encoded")
         ax.set_title(f"Histogram for {label}")
-        ax.bar(df["BitSize"], df["Count"])
+        ax.bar(fdf["Value"], fdf["Count"])
 
     plt.tight_layout()
     plt.show()
@@ -32,4 +41,5 @@ if __name__ == '__main__':
         sys.exit(1)
 
     plot_encoding_histogram(hist_csv_path)
+
 
