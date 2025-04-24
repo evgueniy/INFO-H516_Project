@@ -48,7 +48,8 @@ int main(int argc, char *argv[])
 	icspCodec.init(options.total_frames, options.yuv_fname, 352, 288, options.QP_DC, options.QP_AC);
 	icspCodec.encoding(&options, &stats);
 
-	writeCsvData(stats, filename, options.intra_period, options.QP_DC, options.QP_AC);
+	writeFrameStats(stats, filename, options.intra_period, options.QP_DC, options.QP_AC);
+	writeHistogramStats(stats, filename, options.intra_period, options.QP_DC, options.QP_AC);
 	
 	return 0;
 }

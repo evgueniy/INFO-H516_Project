@@ -238,6 +238,9 @@ struct Statistics {
 	unsigned totalDcBits[frameCount];
 	unsigned totalMvBits[frameCount];
 	unsigned totalEntropyBits[frameCount];
+
+	// Values range from 2 to 22
+	unsigned dcNbitsHistogram[32];
 };
 
 class IcspCodec
@@ -255,7 +258,8 @@ public:
 };
 /*Data collection functions*/
 void computePsnr(FrameData* frames,const int nframes,const int width, const int height ,Statistics *stats);
-void writeCsvData(const Statistics &stats, char* fname, int intra_period, int QstepDC, int QstepAC);
+void writeFrameStats(const Statistics &stats, char* fname, int intra_period, int QstepDC, int QstepAC);
+void writeHistogramStats(const Statistics &stats, char* fname, int intra_period, int QstepDC, int QstepAC);
 /* parsing command function */
 void set_command_options(int argc, char *argv[], cmd_options_t* cmd);
 

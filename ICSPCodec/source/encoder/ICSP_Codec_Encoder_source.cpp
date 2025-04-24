@@ -101,7 +101,7 @@ void computePsnr(FrameData* frames,const int nframes,const int width, const int 
 	stats->psnr[nframes] = (mse > 0) ? 10 * log10((255 * 255)/total_mse) : INFINITY;
 }
 
-void writeCsvData(const Statistics &stats, char* fname, int intra_period, int QstepDC, int QstepAC){
+void writeFrameStats(const Statistics &stats, char* fname, int intra_period, int QstepDC, int QstepAC){
 	char fileName[256];
 
 	// File naming scheme original file name _ Qp _ Qp _ Intraperiod 
@@ -120,6 +120,29 @@ void writeCsvData(const Statistics &stats, char* fname, int intra_period, int Qs
 	for(int i = 0; i< stats.frameCount;i++){
 		sprintf(line, "%d;%u;%u;%u;%u;%.2f;%.2f\n", i, stats.totalDcBits[i], stats.totalAcBits[i], stats.totalMvBits[i], stats.totalEntropyBits[i],stats.psnr[i], stats.psnr[stats.frameCount]);
         fputs(line, csv);
+	}
+	fclose(csv);
+}
+
+void writeHistogramStats(const Statistics &stats, char* fname, int intra_period, int QstepDC, int QstepAC){
+	char fileName[256];
+
+	// File naming scheme original file name _ Qp _ Qp _ Intraperiod 
+	sprintf(fileName, "%s/hist_%s_%d_%d_%d.csv",resultDirectory,fname,QstepDC,QstepAC,intra_period);
+	FILE *csv = fopen(fileName, "w");
+	if (!csv) {
+        perror("Error opening the CSV file");
+        exit(1);
+    }
+	char line[256];
+	//header
+	//todo add PSNR per frame in header as well in data
+  sprintf(line, "Type;BitSize;Count\n");
+  fputs(line, csv);
+	//data
+	for(int i = 0; i< 32;i++){
+		sprintf(line, "DC;%u;%u\n", i, stats.dcNbitsHistogram[i]);
+    fputs(line, csv);
 	}
 	fclose(csv);
 }
@@ -5017,8 +5040,10 @@ void allintraBody(FrameData* frames, int nframes, FILE* fp, Statistics *stats)
 					(frame[cntbits++/8]<<=1) |= DCResult[n];
 				free(DCResult);
 
-				if (stats)
+				if (stats) {
 					stats->totalDcBits[frames[nfrm].numOfFrame] += DCbits;
+					stats->dcNbitsHistogram[DCbits] += 1;
+				}
 								
 				(frame[cntbits++/8]<<=1) |= bd.intraACflag[nblck8]; // acflag 1bit
 				
@@ -5054,8 +5079,10 @@ void allintraBody(FrameData* frames, int nframes, FILE* fp, Statistics *stats)
 				(frame[cntbits++/8]<<=1) |= DCResult[n];
 			free(DCResult);
 
-			if (stats)
+			if (stats) {
 				stats->totalDcBits[frames[nfrm].numOfFrame] += DCbits;
+				stats->dcNbitsHistogram[DCbits] += 1;
+			}
 
 			(frame[cntbits++/8]<<=1) |= cbbd.intraACflag; // acflag 1bit
 
@@ -5086,8 +5113,10 @@ void allintraBody(FrameData* frames, int nframes, FILE* fp, Statistics *stats)
 				(frame[cntbits++/8]<<=1) |= DCResult[n];
 			free(DCResult);
 
-			if (stats)
+			if (stats) {
 				stats->totalDcBits[frames[nfrm].numOfFrame] += DCbits;
+				stats->dcNbitsHistogram[DCbits] += 1;
+			}
 
 			(frame[cntbits++/8]<<=1) |= crbd.intraACflag; // acflag 1bit
 			if(crbd.intraACflag==1)
@@ -5159,8 +5188,10 @@ void intraBody(FrameData& frm, unsigned char* tempFrame, int& cntbits, Statistic
 				(tempFrame[cntbits++/8]<<=1) |= DCResult[n];
 			free(DCResult);
 
-			if (stats)
+			if (stats) {
 				stats->totalDcBits[frm.numOfFrame] += DCbits;
+				stats->dcNbitsHistogram[DCbits] += 1;
+			}
 
 			(tempFrame[cntbits++/8]<<=1) |= bd.intraACflag[nblck8];		  // acflag 1bit
 			if(bd.intraACflag[nblck8]==1)
@@ -5195,8 +5226,10 @@ void intraBody(FrameData& frm, unsigned char* tempFrame, int& cntbits, Statistic
 			(tempFrame[cntbits++/8]<<=1) |= DCResult[n];
 		free(DCResult);
 
-		if (stats)
+		if (stats) {
 			stats->totalDcBits[frm.numOfFrame] += DCbits;
+			stats->dcNbitsHistogram[DCbits] += 1;
+		}
 
 		(tempFrame[cntbits++/8]<<=1) |= cbbd.intraACflag;	   // acflag 1bit
 		if(cbbd.intraACflag==1)
@@ -5226,8 +5259,10 @@ void intraBody(FrameData& frm, unsigned char* tempFrame, int& cntbits, Statistic
 			(tempFrame[cntbits++/8]<<=1) |= DCResult[n];
 		free(DCResult);
 
-		if (stats)
+		if (stats) {
 			stats->totalDcBits[frm.numOfFrame] += DCbits;
+			stats->dcNbitsHistogram[DCbits] += 1;
+		}
 
 		(tempFrame[cntbits++/8]<<=1) |= crbd.intraACflag; // acflag 1bit
 		if(crbd.intraACflag==1)
@@ -5298,8 +5333,10 @@ void interBody(FrameData& frm, unsigned char* tempFrame, int& cntbits, Statistic
 				(tempFrame[cntbits++/8]<<=1) |= DCResult[n];
 			free(DCResult);
 
-			if (stats)
+			if (stats) {
 				stats->totalDcBits[frm.numOfFrame] += DCbits;
+				stats->dcNbitsHistogram[DCbits] += 1;
+			}
 				
 			(tempFrame[cntbits++/8]<<=1) |= bd.interACflag[nblck8]; // acflag 1bit
 			if(bd.interACflag[nblck8] == 1)
@@ -5335,8 +5372,10 @@ void interBody(FrameData& frm, unsigned char* tempFrame, int& cntbits, Statistic
 			(tempFrame[cntbits++/8]<<=1) |= DCResult[n];
 		free(DCResult);
 
-		if (stats)
+		if (stats) {
 			stats->totalDcBits[frm.numOfFrame] += DCbits;
+			stats->dcNbitsHistogram[DCbits] += 1;
+		}
 
 		(tempFrame[cntbits++/8]<<=1) |= cbbd.interACflag; // acflag 1bit
 		if(cbbd.interACflag == 1)
@@ -5366,8 +5405,10 @@ void interBody(FrameData& frm, unsigned char* tempFrame, int& cntbits, Statistic
 			(tempFrame[cntbits++/8]<<=1) |= DCResult[n];
 		free(DCResult);
 
-		if (stats)
+		if (stats) {
 			stats->totalDcBits[frm.numOfFrame] += DCbits;
+			stats->dcNbitsHistogram[DCbits] += 1;
+		}
 
 		(tempFrame[cntbits++/8]<<=1) |= crbd.interACflag; // acflag 1bit
 		if(crbd.interACflag == 1)
