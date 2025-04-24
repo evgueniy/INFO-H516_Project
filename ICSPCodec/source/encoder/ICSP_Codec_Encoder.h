@@ -350,7 +350,7 @@ void allintraBody(FrameData* frames, int nframes, FILE* fp, Statistics *stats = 
 void intraBody(FrameData& frm, unsigned char* tempFrame, int& cntbits, Statistics *stats = nullptr);
 void interBody(FrameData& frm, unsigned char* tempFrame, int& cntbits, Statistics *stats = nullptr);
 int DCentropy(int DCval, unsigned char *DCentropyResult);
-unsigned char* DCentropy(int DCval, int& nbits);
+unsigned char* DCentropy(int DCval, int& nbits, Statistics* stats = nullptr);
 int ACentropy(int* reordblck, unsigned char *ACentropyResult);
 unsigned char* ACentropy(int* reordblck, int& nbits, Statistics* stats = nullptr);
 unsigned char* MVentropy(MotionVector mv, int& nbitsx, int& nbitsy);
