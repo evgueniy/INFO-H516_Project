@@ -148,6 +148,14 @@ void writeHistogramStats(const Statistics &stats, char* fname, int intra_period,
 		sprintf(line, "AC;%u;%u\n", i, stats.acNbitsHistogram[i]);
     fputs(line, csv);
 	}
+	for(int i = 0; i< 32;i++){
+		sprintf(line, "MVX;%u;%u\n", i, stats.mvxNbitsHistogram[i]);
+    fputs(line, csv);
+	}
+	for(int i = 0; i< 32;i++){
+		sprintf(line, "MVY;%u;%u\n", i, stats.mvyNbitsHistogram[i]);
+    fputs(line, csv);
+	}
 	fclose(csv);
 }
 
@@ -5316,7 +5324,7 @@ void interBody(FrameData& frm, unsigned char* tempFrame, int& cntbits, Statistic
 		
 		(tempFrame[cntbits++/8] <<= 1) |= 1;  // mv modeflag
 		
-		MVResult = MVentropy(bd.mv, xMVbits, yMVbits);  // mv; Reconstructedmv�� ���к��Ͱ� �������°� �ƴ� ���� ������ ���͸� ��������; �׷��� mv�� ����
+		MVResult = MVentropy(bd.mv, xMVbits, yMVbits, stats);  // mv; Reconstructedmv�� ���к��Ͱ� �������°� �ƴ� ���� ������ ���͸� ��������; �׷��� mv�� ����
 
 		for(int n=0; n<xMVbits+yMVbits; n++)
 				(tempFrame[cntbits++/8]<<=1) |= MVResult[n];
@@ -6207,7 +6215,7 @@ unsigned char* ACentropy(int* reordblck, int& nbits, Statistics* stats)
 	//system("pause");
 	return ACentropyResult;
 }
-unsigned char* MVentropy(MotionVector mv, int& nbitsx, int& nbitsy)
+unsigned char* MVentropy(MotionVector mv, int& nbitsx, int& nbitsy, Statistics* stats)
 {
 	int xValue = 0;
 	int yValue = 0;
@@ -6250,6 +6258,11 @@ unsigned char* MVentropy(MotionVector mv, int& nbitsx, int& nbitsy)
 	else if(yValue>=512  &&  yValue<=1023) nbitsy=18;
 	else if(yValue>=1024 &&  yValue<=2047) nbitsy=20;
 	else if(yValue>=2048)				   nbitsy=22;	
+	
+	if (stats) {
+		stats->mvxNbitsHistogram[nbitsx] += 1;
+		stats->mvyNbitsHistogram[nbitsy] += 1;
+	}
 	
 	unsigned char* MVentropyResult = (unsigned char*)malloc(sizeof(unsigned char)*(nbitsx+nbitsy));
 	if(MVentropyResult==NULL)

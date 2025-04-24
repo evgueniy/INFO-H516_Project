@@ -242,7 +242,8 @@ struct Statistics {
 	// Values range from 2 to 22
 	unsigned dcNbitsHistogram[32];
 	unsigned acNbitsHistogram[32];
-	unsigned mvNbitsHistogram[32];
+	unsigned mvxNbitsHistogram[32];
+	unsigned mvyNbitsHistogram[32];
 };
 
 class IcspCodec
@@ -353,6 +354,6 @@ int DCentropy(int DCval, unsigned char *DCentropyResult);
 unsigned char* DCentropy(int DCval, int& nbits, Statistics* stats = nullptr);
 int ACentropy(int* reordblck, unsigned char *ACentropyResult);
 unsigned char* ACentropy(int* reordblck, int& nbits, Statistics* stats = nullptr);
-unsigned char* MVentropy(MotionVector mv, int& nbitsx, int& nbitsy);
+unsigned char* MVentropy(MotionVector mv, int& nbitsx, int& nbitsy, Statistics* stats = nullptr);
 
 #endif //ICSP_CODEC_ENCODER
