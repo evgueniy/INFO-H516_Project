@@ -9,6 +9,9 @@
 #include <time.h>
 #include <limits.h>
 
+#include "abac/bitstream.h"
+#include "abac/cabac.h"
+
 using namespace std;
 
 #ifdef WIN_MODE
@@ -356,13 +359,18 @@ void entropyCoding(int* reordblck, int length);
 void entropyCoding(FrameData& frm, int predmode);
 void makebitstream(FrameData* frames, int nframes, int height, int width, int QstepDC, int QstepAC, int intraPeriod, int predmode, Statistics *stats = nullptr);
 void headerinit(header& hd, int height, int width, int QstepDC, int QstepAC, int intraPeriod);
-void allintraBody(FrameData* frames, int nframes, FILE* fp, Statistics *stats = nullptr);
-void intraBody(FrameData& frm, unsigned char* tempFrame, int& cntbits, Statistics *stats = nullptr);
-void interBody(FrameData& frm, unsigned char* tempFrame, int& cntbits, Statistics *stats = nullptr);
+void allintraBody(FrameData* frames, int nframes, FILE* fp, evx::entropy_coder& dcCoder, evx::entropy_coder& acCoder, Statistics *stats = nullptr);
+void intraBody(FrameData& frm, unsigned char* tempFrame, int& cntbits, evx::entropy_coder& dcCoder, evx::entropy_coder& acCoder, Statistics *stats = nullptr);
+void interBody(FrameData& frm, unsigned char* tempFrame, int& cntbits, evx::entropy_coder& dcCoder, evx::entropy_coder& acCoder, evx::entropy_coder& mvCoder, Statistics *stats = nullptr);
 int DCentropy(int DCval, unsigned char *DCentropyResult);
 unsigned char* DCentropy(int DCval, int& nbits, Statistics* stats = nullptr);
 int ACentropy(int* reordblck, unsigned char *ACentropyResult);
 unsigned char* ACentropy(int* reordblck, int& nbits, Statistics* stats = nullptr);
 unsigned char* MVentropy(MotionVector mv, int& nbitsx, int& nbitsy, Statistics* stats = nullptr);
+
+// Cabac entropy functions
+unsigned char* dcCabacEntropy(int DCval, int& nbits, evx::entropy_coder& encoder, Statistics* stats = nullptr);
+unsigned char* acCabacEntropy(int* reordblck, int& nbits, evx::entropy_coder& encoder, Statistics* stats = nullptr);
+unsigned char* mvCabacEntropy(MotionVector mv, int& nbitsx, int& nbitsy, evx::entropy_coder& encoder, Statistics* stats = nullptr);
 
 #endif //ICSP_CODEC_ENCODER
