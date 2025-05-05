@@ -57,7 +57,7 @@ char filename[256];
 // The code is executed in build/[Debug|Release], so to have the
 // results in the root directory, we go two levels up.
 char resultDirectory[] = "../../results";
-
+EntropyCoding EC = EntropyCoding::Original;
 #ifdef WIN_MODE
 /* benchmark function */
 namespace TimeCheck
@@ -151,7 +151,7 @@ void writeCsvData(const Statistics &stats, char* fname, int intra_period, int Qs
 	char fileName[256];
 
 	// File naming scheme original file name _ Qp _ Qp _ Intraperiod 
-	sprintf(fileName, "%s/%s_%d_%d_%d.csv",resultDirectory,fname,QstepDC,QstepAC,intra_period);
+	sprintf(fileName, "%s/%s_%d_%d_%d_%d.csv",resultDirectory,fname,QstepDC,QstepAC,intra_period,static_cast<int>(EC));
 	FILE *csv = fopen(fileName, "w");
 	if (!csv) {
         perror("Error opening the CSV file");
@@ -314,8 +314,12 @@ void* encoding_thread(void* arg)
 
 
 // single-thread function
-void single_thread_encoding(FrameData* frames, YCbCr_t* YCbCr,char* fname, int intra_period, int QstepDC, int QstepAC, Statistics *stats)
+void single_thread_encoding(FrameData* frames, YCbCr_t* YCbCr,char* fname, int intra_period, int QstepDC, int QstepAC,char* entropyCoder, Statistics *stats)
 {
+	if(strcmp(entropyCoder,"original") == 0) EC = EntropyCoding::Original;
+	else if(strcmp(entropyCoder,"cabac") == 0) EC = EntropyCoding::Cabac;
+	else EC = EntropyCoding::Huffman;
+
 	if( intra_period==ALL_INTRA )
 	{
 		allintraPrediction(frames, YCbCr->nframe, QstepDC, QstepAC);
@@ -4952,9 +4956,12 @@ void makebitstream(FrameData* frames, int nframes, int height, int width, int Qs
 {
 	/* header */
 	header hd;
+	// std::cout << (EC == EntropyCoding::Original ? "OG" : "Not OG") << std::endl;
+	// std::cout << (EC == EntropyCoding::Cabac ? "CABAC" : "Not CABAC") << std::endl;
+	// std::cout << (EC == EntropyCoding::Huffman ? "HF" : "Not HF") << std::endl;
 	headerinit(hd, height, width, QstepDC, QstepAC, intraPeriod);
 	char compCIFfname[256];
-	sprintf(compCIFfname, "%s/%s_compCIF_%d_%d_%d.bin", resultDirectory, filename, QstepDC, QstepAC, intraPeriod);
+	sprintf(compCIFfname, "%s/%s_compCIF_%d_%d_%d_%d.bin", resultDirectory, filename, QstepDC, QstepAC, intraPeriod,static_cast<int>(EC));
 	#pragma pack(push, 1)
 	FILE* fp = fopen(compCIFfname, "wb");
 	if(fp==NULL)
@@ -5986,8 +5993,7 @@ int ACentropy(int* reordblck, unsigned char *ACentropyResult)
 
 	return nbits;
 }
-unsigned char* ACentropy(int* reordblck, int& nbits)
-{
+unsigned char* ACentropyOriginal(int* reordblck, int& nbits){
 	int value  = 0;
 	int sign   = 0;
 	int exp    = 0;
@@ -6184,6 +6190,14 @@ unsigned char* ACentropy(int* reordblck, int& nbits)
 	}
 	//system("pause");
 	return ACentropyResult;
+}
+
+unsigned char* ACentropy(int* reordblck, int& nbits)
+{
+	if (EC == EntropyCoding::Cabac);
+	else if (EC == EntropyCoding::Huffman)  return ACentropyHuffman(reordblck, nbits);
+	return ACentropyOriginal(reordblck, nbits);
+	
 }
 
 unsigned char* ACentropyHuffman(int* reordblck, int& nbits) {

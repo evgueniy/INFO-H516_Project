@@ -38,7 +38,7 @@ void IcspCodec::encoding(cmd_options_t* opt, Statistics *stats)
 	}
 	else // single-thread mode
 	{
-		single_thread_encoding(frames, &YCbCr,opt->yuv_fname, opt->intra_period, QstepDC, QstepAC, stats);
+		single_thread_encoding(frames, &YCbCr,opt->yuv_fname, opt->intra_period, QstepDC, QstepAC,opt->entropy_coder, stats);
 	}
 }
 

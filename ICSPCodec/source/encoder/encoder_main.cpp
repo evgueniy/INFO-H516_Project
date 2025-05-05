@@ -5,12 +5,10 @@
 
 extern char filename[256];
 extern char resultDirectory[];
-
 int main(int argc, char *argv[])
 {	
 	cmd_options_t options;	
 	set_command_options(argc, argv, &options);
-
 	// split sequence name for saving bitstream output
 	char *yuv_fname = options.yuv_fname;
 	char* ptr = yuv_fname;

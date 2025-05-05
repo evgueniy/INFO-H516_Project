@@ -38,6 +38,12 @@ typedef enum
 	FAIL_MEM_ALLOC
 }E_ERROR_TYPE;
 
+enum class EntropyCoding {
+    Original,
+    Cabac,
+    Huffman
+};
+
 typedef struct 
 {
 	char yuv_fname[256];
@@ -49,7 +55,7 @@ typedef struct
 	int nthreads;
 	char entropy_coder[128];
 }cmd_options_t;
-
+extern EntropyCoding EC;
 struct Block8d { double block[8][8]; };
 struct Block8i { int block[8][8]; };
 struct Block8u { unsigned char block[8][8];};
@@ -251,7 +257,7 @@ void multi_thread_encoding(cmd_options_t* opt, FrameData* frames);
 void *encoding_thread(void* arg);
 
 // single-thread functions
-void single_thread_encoding(FrameData* frames, YCbCr_t* YCbCr,char* fname, int intra_period, int QstepDC, int QstepAC, Statistics *stats = nullptr);
+void single_thread_encoding(FrameData* frames, YCbCr_t* YCbCr,char* fname, int intra_period, int QstepDC, int QstepAC, char* entropyCoder, Statistics *stats = nullptr);
 
 /* initiation function */
 int YCbCrLoad(IcspCodec &icC, char* fname, const int nframe, const int width, const int height);
@@ -330,6 +336,7 @@ unsigned char* DCentropy(int DCval, int& nbits);
 int ACentropy(int* reordblck, unsigned char *ACentropyResult);
 unsigned char* ACentropy(int* reordblck, int& nbits);
 unsigned char* ACentropyHuffman(int* reordblck, int& nbits);
+unsigned char* ACentropyOriginal(int* reordblck, int& nbits);
 unsigned char* MVentropy(MotionVector mv, int& nbitsx, int& nbitsy);
 
 #endif //ICSP_CODEC_ENCODER
