@@ -2,6 +2,52 @@
 #include "ICSP_thread.h"
 #include <pthread.h>
 
+#include <iostream>
+#include <vector>
+#include <unordered_map>
+#include <queue>
+#include <string>
+#include <cstdlib>
+
+using namespace std;
+
+// Node for Huffman tree
+struct HuffNode {
+	int value;
+	int freq;
+	HuffNode* left;
+	HuffNode* right;
+
+	HuffNode(int v, int f) : value(v), freq(f), left(nullptr), right(nullptr) {}
+	HuffNode(HuffNode* l, HuffNode* r) : value(-1), freq(l->freq + r->freq), left(l), right(r) {}
+};
+
+// Comparator for priority queue
+struct CompareNode {
+	bool operator()(HuffNode* a, HuffNode* b) {
+		return a->freq > b->freq;
+	}
+};
+
+// Recursively build the Huffman codes
+void buildCodes(HuffNode* node, const string& code, unordered_map<int, string>& codeMap) {
+	if (!node) return;
+	if (node->value >= 0) {
+		codeMap[node->value] = code;
+		return;
+	}
+	buildCodes(node->left, code + "0", codeMap);
+	buildCodes(node->right, code + "1", codeMap);
+}
+
+// Clean up tree
+void freeTree(HuffNode* node) {
+	if (!node) return;
+	freeTree(node->left);
+	freeTree(node->right);
+	delete node;
+}
+
 #define min(a, b) (((a) < (b)) ? (a) : (b))
 #define max(a, b) (((a) > (b)) ? (a) : (b))
 
@@ -5930,205 +5976,71 @@ int ACentropy(int* reordblck, unsigned char *ACentropyResult)
 
 	return nbits;
 }
-unsigned char* ACentropy(int* reordblck, int& nbits)
-{
-	int value  = 0;
-	int sign   = 0;
-	int exp    = 0;
-	int c      = 0;
-	int idx    = 0;
-	int length = 63; // except DC value of total 64 values
 
-	for(int i=0; i<length; i++)
-	{
-		value = abs(reordblck[i+1]);
-		if(value==0)						 nbits+=2;
-		else if(value == 1)					 nbits+=4;
-		else if(value>=2    &&  value<=3)    nbits+=5;
-		else if(value>=4    &&  value<=7)    nbits+=6;
-		else if(value>=8    &&  value<=15)   nbits+=7;
-		else if(value>=16   &&  value<=31)   nbits+=8;
-		else if(value>=32   &&  value<=63)   nbits+=10;
-		else if(value>=64   &&  value<=127)  nbits+=12;
-		else if(value>=128  &&  value<=255)  nbits+=14;
-		else if(value>=256  &&  value<=511)  nbits+=16;
-		else if(value>=512  &&  value<=1023) nbits+=18;
-		else if(value>=1024 &&  value<=2047) nbits+=20;
-		else if(value>=2048)				 nbits+=22;
+unsigned char* ACentropy(int* reordblck, int& nbits) {
+	const int length = 63;
+	unordered_map<int, int> freq;
+
+	// Step 1: Count frequencies of absolute values (skip DC)
+	for (int i = 0; i < length; ++i) {
+		int absval = abs(reordblck[i + 1]);
+		freq[absval]++;
 	}
 
+	// Step 2: Build Huffman tree
+	priority_queue<HuffNode*, vector<HuffNode*>, CompareNode> pq;
+	for (const auto& entry : freq) {
+		pq.push(new HuffNode(entry.first, entry.second));
+	}
+	while (pq.size() > 1) {
+		HuffNode* left = pq.top(); pq.pop();
+		HuffNode* right = pq.top(); pq.pop();
+		pq.push(new HuffNode(left, right));
+	}
+	HuffNode* root = pq.top();
 
-	unsigned char* ACentropyResult = (unsigned char*) malloc(sizeof(unsigned char)*nbits);	
-	if(ACentropyResult==NULL)
-	{
-		cout << "fail to allocate ACentropyResult" << endl;
-		exit(-1);
+	// Step 3: Generate Huffman codes
+	unordered_map<int, string> huffmanCode;
+	buildCodes(root, "", huffmanCode);
+
+	// Step 4: Encode bitstream
+	vector<bool> bitstream;
+	for (int i = 0; i < length; ++i) {
+		int coeff = reordblck[i + 1];
+		int absval = abs(coeff);
+		int sign = coeff >= 0 ? 1 : 0;
+
+		// Get Huffman code
+		string code = huffmanCode[absval];
+		for (char c : code)
+			bitstream.push_back(c == '1');
+
+		if (absval != 0)
+			bitstream.push_back(sign);
 	}
 
-	//cout << "AC entropy" << endl;
-	for(int i=0; i<length; i++)
-	{
-		sign  = (reordblck[i+1]>=0)?1:0;
-		value = abs(reordblck[i+1]);
-
-		//////////
-		int previdx = idx;
-		//////////
-
-		if(value == 0)					  
-		{
-			ACentropyResult[idx++]=0;
-			ACentropyResult[idx++]=0;
-		}
-		else if(value == 1)
-		{
-			ACentropyResult[idx++]=0;
-			ACentropyResult[idx++]=1;
-			ACentropyResult[idx++]=0;
-			ACentropyResult[idx++]=sign;
-		}
-		else if(value>=2   &&  value<=3)
-		{
-			exp=1;
-			ACentropyResult[idx++]=0;
-			ACentropyResult[idx++]=1;
-			ACentropyResult[idx++]=1;
-			ACentropyResult[idx++]=sign;
-			c=value-2;
-			for(int n=exp; n>0; n--)
-				ACentropyResult[idx++] = (c>>(n-1))&1;
-
-		}
-		else if(value>=4   &&  value<=7)
-		{
-			exp=2;
-			ACentropyResult[idx++]=1;
-			ACentropyResult[idx++]=0;
-			ACentropyResult[idx++]=0;
-			ACentropyResult[idx++]=sign;
-
-			c=value-4;
-			for(int n=exp; n>0; n--)
-				ACentropyResult[idx++] = (c>>(n-1))&1;
-		}
-		else if(value>=8   &&  value<=15)
-		{
-			exp=3;
-			ACentropyResult[idx++]=1;
-			ACentropyResult[idx++]=0;
-			ACentropyResult[idx++]=1;
-			ACentropyResult[idx++]=sign;
-
-			c=value-8;
-			for(int n=exp; n>0; n--)
-				ACentropyResult[idx++] = (c>>(n-1))&1;
-		}
-		else if(value>=16  &&  value<=31)
-		{
-			exp=4;
-			ACentropyResult[idx++]=1;
-			ACentropyResult[idx++]=1;
-			ACentropyResult[idx++]=0;
-			ACentropyResult[idx++]=sign;
-
-			c=value-16;
-			for(int n=exp; n>0; n--)
-				ACentropyResult[idx++] = (c>>(n-1))&1;
-		}
-		else if(value>=32  &&  value<=63)
-		{
-			exp=5;
-			for(int n=0; n<exp-2; n++)
-				ACentropyResult[idx++]=1;
-			ACentropyResult[idx++]=0;
-			ACentropyResult[idx++]=sign;
-
-			c=value-32;
-			for(int n=exp; n>0; n--)
-				ACentropyResult[idx++] = (c>>(n-1))&1;
-		}
-		else if(value>=64  &&  value<=127)
-		{
-			exp=6;
-			for(int n=0; n<exp-2; n++)
-				ACentropyResult[idx++]=1;
-			ACentropyResult[idx++]=0;
-			ACentropyResult[idx++]=sign;
-
-			c=value-64;
-			for(int n=exp; n>0; n--)
-				ACentropyResult[idx++] = (c>>(n-1))&1;
-		}
-		else if(value>=128 &&  value<=255)
-		{
-			exp=7;
-			for(int n=0; n<exp-2; n++)
-				ACentropyResult[idx++]=1;
-			ACentropyResult[idx++]=0;
-			ACentropyResult[idx++]=sign;
-
-			c=value-128;
-			for(int n=exp; n>0; n--)
-				ACentropyResult[idx++] = (c>>(n-1))&1;
-		}
-		else if(value>=256 &&  value<=511)
-		{
-			exp=8;
-			for(int n=0; n<exp-2; n++)
-				ACentropyResult[idx++]=1;
-			ACentropyResult[idx++]=0;
-			ACentropyResult[idx++]=sign;
-
-			c=value-256;
-			for(int n=exp; n>0; n--)
-				ACentropyResult[idx++] = (c>>(n-1))&1;
-		}
-		else if(value>=512 &&  value<=1023)
-		{
-			exp=9;
-			for(int n=0; n<exp-2; n++)
-				ACentropyResult[idx++]=1;
-			ACentropyResult[idx++]=0;
-			ACentropyResult[idx++]=sign;
-
-			c=value-512;
-			for(int n=exp; n>0; n--)
-				ACentropyResult[idx++] = (c>>(n-1))&1;
-		}
-		else if(value>=1024 &&  value<=2047)
-		{
-			exp=10;
-			for(int n=0; n<exp-2; n++)
-				ACentropyResult[idx++]=1;
-			ACentropyResult[idx++]=0;
-			ACentropyResult[idx++]=sign;
-
-			c=value-1024;
-			for(int n=exp; n>0; n--)
-				ACentropyResult[idx++] = (c>>(n-1))&1;
-		}
-		else if(value>=2048)
-		{
-			exp=11;
-			for(int n=0; n<exp-2; n++)
-				ACentropyResult[idx++]=1;
-			ACentropyResult[idx++]=0;
-			ACentropyResult[idx++]=sign;
-
-			c=value-2048;
-			for(int n=exp; n>0; n--)
-				ACentropyResult[idx++] = (c>>(n-1))&1;
-		}
-
-		/*for(int nb=previdx; nb<idx; nb++)
-		{
-			cout << (int)ACentropyResult[nb] << " ";
-		}
-		cout << endl;*/
+	nbits = bitstream.size();
+	int nbytes = (nbits + 7) / 8;
+	unsigned char* encoded = (unsigned char*)malloc(nbytes);
+	if (!encoded) {
+		cerr << "Memory allocation failed.\n";
+		exit(EXIT_FAILURE);
 	}
-	//system("pause");
-	return ACentropyResult;
+	for (int i = 0; i < nbytes; ++i) encoded[i] = 0;
+
+	// Step 5: Pack bits into bytes
+	for (int i = 0; i < nbits; ++i) {
+		if (bitstream[i]) {
+			encoded[i / 8] |= (1 << (7 - (i % 8)));
+		}
+	}
+
+	// Clean up
+	freeTree(root);
+
+	return encoded;
 }
+
 unsigned char* MVentropy(MotionVector mv, int& nbitsx, int& nbitsy)
 {
 	int xValue = 0;
