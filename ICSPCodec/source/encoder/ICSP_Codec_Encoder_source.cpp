@@ -105,7 +105,7 @@ void writeFrameStats(const Statistics &stats, char* fname, int intra_period, int
 	char fileName[256];
 
 	// File naming scheme original file name _ Qp _ Qp _ Intraperiod 
-	sprintf(fileName, "%s/%s_%d_%d_%d.csv",resultDirectory,fname,QstepDC,QstepAC,intra_period);
+sprintf(fileName, "%s/%s_%d_%d_%d.csv",resultDirectory,fname,QstepDC,QstepAC,intra_period);
 	FILE *csv = fopen(fileName, "w");
 	if (!csv) {
         perror("Error opening the CSV file");
@@ -193,6 +193,50 @@ void writeHistogramValueStats(const Statistics &stats, char* fname, int intra_pe
 	for(int i = 0; i< size;i++){
 		sprintf(line, "MVY;%u;%u\n", i, stats.mvyValuesHistogram[i]);
     fputs(line, csv);
+	}
+	fclose(csv);
+}
+
+void writeMotionVectors(Statistics& stats, char* fname, int intraPeriod) {
+	char fileName[256];
+
+	sprintf(fileName, "%s/mv_%s_.csv", resultDirectory, fname);
+	FILE *csv = fopen(fileName, "w");
+	if (!csv) {
+      perror("Error opening the CSV file");
+      exit(1);
+    }
+
+	char line[256];
+	//header
+    sprintf(line, "Frame;MvPosX;MvPosY;MvDirX;MvDirY\n");
+    fputs(line, csv);
+
+    int frmCount = stats.frameCount;
+    int blkCount = stats.numberOfBlocks;
+
+	// First block
+	for (int i = 0; i < blkCount; i++) {
+		int posX = 0;
+		int posY = 0;
+		int dirX = 0;
+		int dirY = 0;
+		sprintf(line, "%d;%d;%d;%d;%d\n", 0, posX, posY, dirX, dirY);
+		fputs(line, csv);
+	}
+
+	// Remaining blocks
+	for (int frm = 1; frm < frmCount; frm++) {
+		// Take the mv vectors of the previous frame (unless first which is all 0)
+		int frmIdx = frm % intraPeriod == 0 ? frm - 1 : frm;
+		for(int i = 0; i< blkCount; i++){
+			int posX = stats.mvPosX[frmIdx][i];
+			int posY = stats.mvPosY[frmIdx][i];
+			int dirX = stats.mvDirX[frmIdx][i];
+			int dirY = stats.mvDirY[frmIdx][i];
+			sprintf(line, "%d;%d;%d;%d;%d\n", frm, posX, posY, dirX, dirY);
+			fputs(line, csv);
+		}
 	}
 	fclose(csv);
 }
@@ -328,7 +372,6 @@ void* encoding_thread(void* arg)
 
 	return NULL;
 }
-
 
 // single-thread function
 void single_thread_encoding(FrameData* frames, YCbCr_t* YCbCr,char* fname, int intra_period, int QstepDC, int QstepAC, Statistics *stats)
@@ -2653,7 +2696,7 @@ void CmotionCompensation(FrameData& cntFrm, FrameData& prevFrm, int type)
 	unsigned char predblck[16][16] = { 0, };
 
 	CBlockData *cbd = NULL;
- 	if(type == CB)
+	if(type == CB)
 		cbd = cntFrm.Cbblocks;
 	else if(type == CR)
 		cbd = cntFrm.Crblocks;
@@ -5355,10 +5398,25 @@ void interBody(FrameData& frm, unsigned char* tempFrame, int& cntbits, Statistic
 	unsigned char* DCResult = NULL;
 	unsigned char* ACResult = NULL;
 	unsigned char* MVResult = NULL;
+
+	if (stats) {
+		stats->numberOfBlocks = totalblck;
+		stats->mvPosX[frm.numOfFrame] = (int*) malloc(sizeof(int) * totalblck);
+		stats->mvPosY[frm.numOfFrame] = (int*) malloc(sizeof(int) * totalblck);
+		stats->mvDirX[frm.numOfFrame] = (int*) malloc(sizeof(int) * totalblck);
+		stats->mvDirY[frm.numOfFrame] = (int*) malloc(sizeof(int) * totalblck);
+	}
 	
 	for(int nblck16=0; nblck16<totalblck; nblck16++)
 	{
 		BlockData& bd = frm.blocks[nblck16];
+
+		if (stats) {
+			stats->mvPosX[frm.numOfFrame][nblck16] = nblck16 % frm.splitWidth * 16 + 8;
+			stats->mvPosY[frm.numOfFrame][nblck16] = nblck16 / frm.splitWidth * 16 + 8;
+			stats->mvDirX[frm.numOfFrame][nblck16] = bd.mv.x;
+			stats->mvDirY[frm.numOfFrame][nblck16] = bd.mv.y;
+		}
 		
 		(tempFrame[cntbits++/8] <<= 1) |= 1;  // mv modeflag
 		

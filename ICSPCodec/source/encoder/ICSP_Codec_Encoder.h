@@ -252,6 +252,13 @@ struct Statistics {
 	unsigned acValuesHistogram[histValueSize];
 	unsigned mvxValuesHistogram[histValueSize];
 	unsigned mvyValuesHistogram[histValueSize];
+
+	// Motion vectors, to be initialized
+	int numberOfBlocks;
+	int* mvPosX[frameCount];
+	int* mvPosY[frameCount];
+	int* mvDirX[frameCount];
+	int* mvDirY[frameCount];
 };
 
 class IcspCodec
@@ -272,6 +279,7 @@ void computePsnr(FrameData* frames,const int nframes,const int width, const int 
 void writeFrameStats(const Statistics &stats, char* fname, int intra_period, int QstepDC, int QstepAC);
 void writeHistogramBitsizeStats(const Statistics &stats, char* fname, int intra_period, int QstepDC, int QstepAC);
 void writeHistogramValueStats(const Statistics &stats, char* fname, int intra_period, int QstepDC, int QstepAC);
+void writeMotionVectors(Statistics& stats, char* filename, int intraPeriod);
 /* parsing command function */
 void set_command_options(int argc, char *argv[], cmd_options_t* cmd);
 
