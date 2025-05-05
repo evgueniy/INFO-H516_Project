@@ -47,6 +47,7 @@ typedef struct
 	int intra_period;
 	int multi_thread_mode;
 	int nthreads;
+	char entropy_coder[128];
 }cmd_options_t;
 
 struct Block8d { double block[8][8]; };
@@ -328,6 +329,7 @@ int DCentropy(int DCval, unsigned char *DCentropyResult);
 unsigned char* DCentropy(int DCval, int& nbits);
 int ACentropy(int* reordblck, unsigned char *ACentropyResult);
 unsigned char* ACentropy(int* reordblck, int& nbits);
+unsigned char* ACentropyHuffman(int* reordblck, int& nbits);
 unsigned char* MVentropy(MotionVector mv, int& nbitsx, int& nbitsy);
 
 #endif //ICSP_CODEC_ENCODER

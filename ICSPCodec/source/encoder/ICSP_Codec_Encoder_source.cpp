@@ -178,6 +178,7 @@ static void init_cmd_options(cmd_options_t* cmd)
 	cmd->QP_AC = 0;
 	cmd->intra_period = 0;
 	cmd->multi_thread_mode = 0;
+	memset(cmd->entropy_coder, 0, sizeof(char)*128);
 }
 
 // parse command and extract cfg options
@@ -229,6 +230,14 @@ static int parsing_command(int argc, char *argv[], cmd_options_t *cmd)
 				{
 					memcpy(cmd->yuv_fname, argv[i+1], sizeof(char)*256);
 				}
+				else if (option[1] == 'e')
+				{
+					memcpy(cmd->entropy_coder, argv[i+1], sizeof(char)*128);
+					if(strcmp(cmd->entropy_coder,"original") != 0 && 
+						strcmp(cmd->entropy_coder,"cabac") != 0 && 
+						strcmp(cmd->entropy_coder,"huffman") != 0 )
+						sprintf(cmd->entropy_coder,"original");
+				}
 				else if (option[1] == 'n')
 				{
 					cmd->total_frames = atoi(argv[i+1]);
@@ -250,7 +259,8 @@ static int parsing_command(int argc, char *argv[], cmd_options_t *cmd)
 			}
 		}
 	}
-
+	if(strcmp(cmd->entropy_coder,"") == 0) sprintf(cmd->entropy_coder,"original");
+	printf("Testing e arg: %s\n",cmd->entropy_coder);
 	return SUCCESS;
 }
 void set_command_options(int argc, char *argv[], cmd_options_t *cmd)
@@ -5976,8 +5986,207 @@ int ACentropy(int* reordblck, unsigned char *ACentropyResult)
 
 	return nbits;
 }
+unsigned char* ACentropy(int* reordblck, int& nbits)
+{
+	int value  = 0;
+	int sign   = 0;
+	int exp    = 0;
+	int c      = 0;
+	int idx    = 0;
+	int length = 63; // except DC value of total 64 values
 
-unsigned char* ACentropy(int* reordblck, int& nbits) {
+	for(int i=0; i<length; i++)
+	{
+		value = abs(reordblck[i+1]);
+		if(value==0)						 nbits+=2;
+		else if(value == 1)					 nbits+=4;
+		else if(value>=2    &&  value<=3)    nbits+=5;
+		else if(value>=4    &&  value<=7)    nbits+=6;
+		else if(value>=8    &&  value<=15)   nbits+=7;
+		else if(value>=16   &&  value<=31)   nbits+=8;
+		else if(value>=32   &&  value<=63)   nbits+=10;
+		else if(value>=64   &&  value<=127)  nbits+=12;
+		else if(value>=128  &&  value<=255)  nbits+=14;
+		else if(value>=256  &&  value<=511)  nbits+=16;
+		else if(value>=512  &&  value<=1023) nbits+=18;
+		else if(value>=1024 &&  value<=2047) nbits+=20;
+		else if(value>=2048)				 nbits+=22;
+	}
+
+
+	unsigned char* ACentropyResult = (unsigned char*) malloc(sizeof(unsigned char)*nbits);	
+	if(ACentropyResult==NULL)
+	{
+		cout << "fail to allocate ACentropyResult" << endl;
+		exit(-1);
+	}
+
+	//cout << "AC entropy" << endl;
+	for(int i=0; i<length; i++)
+	{
+		sign  = (reordblck[i+1]>=0)?1:0;
+		value = abs(reordblck[i+1]);
+
+		//////////
+		int previdx = idx;
+		//////////
+
+		if(value == 0)					  
+		{
+			ACentropyResult[idx++]=0;
+			ACentropyResult[idx++]=0;
+		}
+		else if(value == 1)
+		{
+			ACentropyResult[idx++]=0;
+			ACentropyResult[idx++]=1;
+			ACentropyResult[idx++]=0;
+			ACentropyResult[idx++]=sign;
+		}
+		else if(value>=2   &&  value<=3)
+		{
+			exp=1;
+			ACentropyResult[idx++]=0;
+			ACentropyResult[idx++]=1;
+			ACentropyResult[idx++]=1;
+			ACentropyResult[idx++]=sign;
+			c=value-2;
+			for(int n=exp; n>0; n--)
+				ACentropyResult[idx++] = (c>>(n-1))&1;
+
+		}
+		else if(value>=4   &&  value<=7)
+		{
+			exp=2;
+			ACentropyResult[idx++]=1;
+			ACentropyResult[idx++]=0;
+			ACentropyResult[idx++]=0;
+			ACentropyResult[idx++]=sign;
+
+			c=value-4;
+			for(int n=exp; n>0; n--)
+				ACentropyResult[idx++] = (c>>(n-1))&1;
+		}
+		else if(value>=8   &&  value<=15)
+		{
+			exp=3;
+			ACentropyResult[idx++]=1;
+			ACentropyResult[idx++]=0;
+			ACentropyResult[idx++]=1;
+			ACentropyResult[idx++]=sign;
+
+			c=value-8;
+			for(int n=exp; n>0; n--)
+				ACentropyResult[idx++] = (c>>(n-1))&1;
+		}
+		else if(value>=16  &&  value<=31)
+		{
+			exp=4;
+			ACentropyResult[idx++]=1;
+			ACentropyResult[idx++]=1;
+			ACentropyResult[idx++]=0;
+			ACentropyResult[idx++]=sign;
+
+			c=value-16;
+			for(int n=exp; n>0; n--)
+				ACentropyResult[idx++] = (c>>(n-1))&1;
+		}
+		else if(value>=32  &&  value<=63)
+		{
+			exp=5;
+			for(int n=0; n<exp-2; n++)
+				ACentropyResult[idx++]=1;
+			ACentropyResult[idx++]=0;
+			ACentropyResult[idx++]=sign;
+
+			c=value-32;
+			for(int n=exp; n>0; n--)
+				ACentropyResult[idx++] = (c>>(n-1))&1;
+		}
+		else if(value>=64  &&  value<=127)
+		{
+			exp=6;
+			for(int n=0; n<exp-2; n++)
+				ACentropyResult[idx++]=1;
+			ACentropyResult[idx++]=0;
+			ACentropyResult[idx++]=sign;
+
+			c=value-64;
+			for(int n=exp; n>0; n--)
+				ACentropyResult[idx++] = (c>>(n-1))&1;
+		}
+		else if(value>=128 &&  value<=255)
+		{
+			exp=7;
+			for(int n=0; n<exp-2; n++)
+				ACentropyResult[idx++]=1;
+			ACentropyResult[idx++]=0;
+			ACentropyResult[idx++]=sign;
+
+			c=value-128;
+			for(int n=exp; n>0; n--)
+				ACentropyResult[idx++] = (c>>(n-1))&1;
+		}
+		else if(value>=256 &&  value<=511)
+		{
+			exp=8;
+			for(int n=0; n<exp-2; n++)
+				ACentropyResult[idx++]=1;
+			ACentropyResult[idx++]=0;
+			ACentropyResult[idx++]=sign;
+
+			c=value-256;
+			for(int n=exp; n>0; n--)
+				ACentropyResult[idx++] = (c>>(n-1))&1;
+		}
+		else if(value>=512 &&  value<=1023)
+		{
+			exp=9;
+			for(int n=0; n<exp-2; n++)
+				ACentropyResult[idx++]=1;
+			ACentropyResult[idx++]=0;
+			ACentropyResult[idx++]=sign;
+
+			c=value-512;
+			for(int n=exp; n>0; n--)
+				ACentropyResult[idx++] = (c>>(n-1))&1;
+		}
+		else if(value>=1024 &&  value<=2047)
+		{
+			exp=10;
+			for(int n=0; n<exp-2; n++)
+				ACentropyResult[idx++]=1;
+			ACentropyResult[idx++]=0;
+			ACentropyResult[idx++]=sign;
+
+			c=value-1024;
+			for(int n=exp; n>0; n--)
+				ACentropyResult[idx++] = (c>>(n-1))&1;
+		}
+		else if(value>=2048)
+		{
+			exp=11;
+			for(int n=0; n<exp-2; n++)
+				ACentropyResult[idx++]=1;
+			ACentropyResult[idx++]=0;
+			ACentropyResult[idx++]=sign;
+
+			c=value-2048;
+			for(int n=exp; n>0; n--)
+				ACentropyResult[idx++] = (c>>(n-1))&1;
+		}
+
+		/*for(int nb=previdx; nb<idx; nb++)
+		{
+			cout << (int)ACentropyResult[nb] << " ";
+		}
+		cout << endl;*/
+	}
+	//system("pause");
+	return ACentropyResult;
+}
+
+unsigned char* ACentropyHuffman(int* reordblck, int& nbits) {
 	const int length = 63;
 	unordered_map<int, int> freq;
 
