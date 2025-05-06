@@ -392,6 +392,7 @@ void* encoding_thread(void* arg)
 // single-thread function
 void single_thread_encoding(FrameData* frames, YCbCr_t* YCbCr,char* fname, int intra_period, int QstepDC, int QstepAC,char* entropyCoder, Statistics *stats)
 {
+	/*Use of global EntropyCoder var*/
 	if(strcmp(entropyCoder,"original") == 0) EC = EntropyCoding::Original;
 	else if(strcmp(entropyCoder,"cabac") == 0) EC = EntropyCoding::Cabac;
 	else EC = EntropyCoding::Huffman;

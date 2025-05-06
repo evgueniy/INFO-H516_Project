@@ -43,13 +43,16 @@ could be:
 cd ./ICSPCodec/build/Debug
 ./ICSPCodec  -i  "../../data/table_cif(352X288)_300f.yuv"  -n  300  -q  16  --intraPeriod  8  --EnMultiThread  0
 ```
-
+optionnal -e parameter sets the entropy conder that will be used it must either absent and use its original entropy coder or must be one of the following parameters:
+- orginal (will use ICSP original entropy coder)
+- cabac
+- huffman
 Running it produces the following files found under `./results` (the example
 file names are resulting from the above invocation):
 
--  **Encoded Binary File:**  `table_comCIF_16_16_8.bin`
+-  **Encoded Binary File:**  `table_comCIF_16_16_8_0.bin`
 -  **Decoded YUV File:**  `table_cif(352X288)_300f.yuv_16_16_8_decoded.yuv` (not in `./results` currently)
--  **Statistics File:**  `table_16_16_8.csv`
+-  **Statistics File:**  `table_16_16_8_0.csv`
 
 <!-- ## QP Values -->
 <!-- 2 6 20 42 -->
