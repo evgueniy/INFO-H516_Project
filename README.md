@@ -44,9 +44,10 @@ cd ./ICSPCodec/build/Debug
 ./ICSPCodec  -i  "../../data/table_cif(352X288)_300f.yuv"  -n  300  -q  16  --intraPeriod  8  --EnMultiThread  0
 ```
 optionnal -e parameter sets the entropy conder that will be used it must either absent and use its original entropy coder or must be one of the following parameters:
-- orginal (will use ICSP original entropy coder)
-- cabac
-- huffman
+- **orginal** (can be achieved by omotting it)
+- **cabac**
+- **huffman**
+
 Running it produces the following files found under `./results` (the example
 file names are resulting from the above invocation):
 
