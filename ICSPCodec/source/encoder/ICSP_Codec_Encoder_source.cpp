@@ -5086,12 +5086,12 @@ void makebitstream(FrameData* frames, int nframes, int height, int width, int Qs
 			if(n%intraPeriod==0)
 			{
 				intraBody(frames[n], tempFrame, cntbits, dcCoder, acCoder, stats);
-				cout << "intra frame bits: " << cntbits << endl;
+				// cout << "intra frame bits: " << cntbits << endl;
 			}
 			else
 			{
 				interBody(frames[n], tempFrame, cntbits, dcCoder, acCoder, mvCoder, stats);
-				cout << "inter frame bits: " << cntbits << endl;				
+				// cout << "inter frame bits: " << cntbits << endl;				
 			}
 		}
 		fwrite(tempFrame, (cntbits/8)+1, 1, fp);
@@ -6477,7 +6477,7 @@ unsigned char* ACentropyHuffman(int* reordblck, int& nbits) {
 	return encoded;
 }
 
-unsigned char* MVentropyOriginal(MotionVector mv, int& nbitsx, int& nbitsy, Statistics* stats = nullptr){
+unsigned char* MVentropyOriginal(MotionVector mv, int& nbitsx, int& nbitsy, Statistics* stats){
 	int xValue = 0;
 	int yValue = 0;
 	int xsign  = 0;

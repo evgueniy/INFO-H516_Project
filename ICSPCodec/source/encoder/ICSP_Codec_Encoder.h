@@ -371,6 +371,7 @@ void intraBody(FrameData& frm, unsigned char* tempFrame, int& cntbits, evx::entr
 void interBody(FrameData& frm, unsigned char* tempFrame, int& cntbits, evx::entropy_coder& dcCoder, evx::entropy_coder& acCoder, evx::entropy_coder& mvCoder, Statistics *stats = nullptr);
 int DCentropy(int DCval, unsigned char *DCentropyResult);
 unsigned char* DCentropy(int DCval, int& nbits, evx::entropy_coder& encoder, Statistics* stats = nullptr);
+unsigned char* DCentropyOriginal(int DCval, int& nbits, Statistics* stats = nullptr);
 int ACentropy(int* reordblck, unsigned char *ACentropyResult);
 unsigned char* ACentropy(int* reordblck, int& nbits, evx::entropy_coder& encoder, Statistics* stats = nullptr);
 unsigned char* ACentropyHuffman(int* reordblck, int& nbits);
