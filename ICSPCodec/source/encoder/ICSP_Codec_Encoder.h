@@ -370,16 +370,17 @@ void allintraBody(FrameData* frames, int nframes, FILE* fp, evx::entropy_coder& 
 void intraBody(FrameData& frm, unsigned char* tempFrame, int& cntbits, evx::entropy_coder& dcCoder, evx::entropy_coder& acCoder, Statistics *stats = nullptr);
 void interBody(FrameData& frm, unsigned char* tempFrame, int& cntbits, evx::entropy_coder& dcCoder, evx::entropy_coder& acCoder, evx::entropy_coder& mvCoder, Statistics *stats = nullptr);
 int DCentropy(int DCval, unsigned char *DCentropyResult);
-unsigned char* DCentropy(int DCval, int& nbits, Statistics* stats = nullptr);
+unsigned char* DCentropy(int DCval, int& nbits, evx::entropy_coder& encoder, Statistics* stats = nullptr);
 int ACentropy(int* reordblck, unsigned char *ACentropyResult);
-unsigned char* ACentropy(int* reordblck, int& nbits, Statistics* stats = nullptr);
+unsigned char* ACentropy(int* reordblck, int& nbits, evx::entropy_coder& encoder, Statistics* stats = nullptr);
 unsigned char* ACentropyHuffman(int* reordblck, int& nbits);
 unsigned char* ACentropyOriginal(int* reordblck, int& nbits);
-unsigned char* MVentropy(MotionVector mv, int& nbitsx, int& nbitsy, Statistics* stats = nullptr);
-
+unsigned char* MVentropy(MotionVector mv, int& nbitsx, int& nbitsy, evx::entropy_coder& encoder, Statistics* stats = nullptr);
+unsigned char* MVentropyOriginal(MotionVector mv, int& nbitsx, int& nbitsy, Statistics* stats = nullptr);
+//TODO: change General entropy function and entropy cabac coder so it a global pointer to avoid passing useless coder when it uses other things than cabac
 // Cabac entropy functions
-unsigned char* dcCabacEntropy(int DCval, int& nbits, evx::entropy_coder& encoder, Statistics* stats = nullptr);
-unsigned char* acCabacEntropy(int* reordblck, int& nbits, evx::entropy_coder& encoder, Statistics* stats = nullptr);
-unsigned char* mvCabacEntropy(MotionVector mv, int& nbitsx, int& nbitsy, evx::entropy_coder& encoder, Statistics* stats = nullptr);
+unsigned char* DCentropyCabac(int DCval, int& nbits, evx::entropy_coder& encoder, Statistics* stats = nullptr);
+unsigned char* ACentropyCabac(int* reordblck, int& nbits, evx::entropy_coder& encoder, Statistics* stats = nullptr);
+unsigned char* MVentropyCabac(MotionVector mv, int& nbitsx, int& nbitsy, evx::entropy_coder& encoder, Statistics* stats = nullptr);
 
 #endif //ICSP_CODEC_ENCODER
