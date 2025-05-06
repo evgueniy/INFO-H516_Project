@@ -5812,7 +5812,11 @@ int DCentropy(int DCval, unsigned char *DCentropyResult)
 
 	return nbits;
 }
-unsigned char* DCentropy(int DCval, int& nbits, Statistics* stats)
+unsigned char* DCentropy(int DCval, int& nbits, evx::entropy_coder& encoder, Statistics* stats){
+	if (EC == EntropyCoding::Cabac) return DCentropyCabac(DCval,nbits,encoder, stats);
+	return DCentropyOriginal(DCval,nbits, stats);
+}
+unsigned char* DCentropyOriginal(int DCval, int& nbits, Statistics* stats)
 {
 	// Absolute value
 	int value = 0;
@@ -6401,9 +6405,9 @@ unsigned char* ACentropyOriginal(int* reordblck, int& nbits){
 	return ACentropyResult;
 }
 
-unsigned char* ACentropy(int* reordblck, int& nbits)
+unsigned char* ACentropy(int* reordblck, int& nbits, evx::entropy_coder& encoder, Statistics* stats)
 {
-	if (EC == EntropyCoding::Cabac);
+	if (EC == EntropyCoding::Cabac) return ACentropyCabac(reordblck, nbits, encoder, stats);
 	else if (EC == EntropyCoding::Huffman)  return ACentropyHuffman(reordblck, nbits);
 	return ACentropyOriginal(reordblck, nbits);
 	
