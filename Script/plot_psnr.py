@@ -5,7 +5,7 @@ import matplotlib.pyplot as plt
 import subprocess
 from bjontegaard import bd_rate, bd_psnr
 
-def plotDataFrame(dataFrame, intraPeriod: list):
+def plotDataFrame(dataFrame, intraPeriod: list,codec):
     fig, ax1 = plt.subplots(figsize=(10, 6))
     maxPsnr = dataFrame.filter(like="psnr_").max().max()
     maxBitrate = dataFrame.filter(like="bitrate_").max().max()
@@ -26,7 +26,7 @@ def plotDataFrame(dataFrame, intraPeriod: list):
     ax1.set_ylim(minPsnr - 1, maxPsnr + 1)
     ax1.set_xlim(minBitrate - 1, maxBitrate + 1)
     ax1.tick_params(axis="y", labelcolor="blue")
-    ax1.set_title("Bit rate vs PSNR")
+    ax1.set_title(f"Bit rate vs PSNR - {codec}")
     ax1.grid(True)
     ax1.legend()
     if len(dataFrame["bitrate_0"].values) == 4:
@@ -128,4 +128,4 @@ dft = pd.concat([df1, df2], axis=1)
 sorted_dft = dft.sort_values(by='bitrate_0', ascending=True)
 zero = pd.DataFrame({key : [0] for key in sorted_dft.columns})
 df = pd.concat([zero, sorted_dft], ignore_index=True)
-plotDataFrame(sorted_dft, intraPeriod)
+plotDataFrame(sorted_dft, intraPeriod,encodingArg)
