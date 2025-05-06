@@ -5158,7 +5158,7 @@ void allintraBody(FrameData* frames, int nframes, FILE* fp, evx::entropy_coder& 
 				(frame[cntbits++/8]<<=1) |= bd.MPMFlag[nblck8]; // mpmflag 1bit				
 				(frame[cntbits++/8]<<=1) |= bd.intraPredMode[nblck8]; // intra prediction flag 1bit				
 
-				DCResult = DCentropy(bd.intraReorderedblck8[nblck8][0], DCbits, dcCode stats); // DC entropy result ?bits; one value
+				DCResult = DCentropy(bd.intraReorderedblck8[nblck8][0], DCbits, dcCoder, stats); // DC entropy result ?bits; one value
 				// for(int n=0; n<DCbits; n++)
 				// 	(frame[cntbits++/8]<<=1) |= DCResult[n];
 				// free(DCResult);
@@ -5187,7 +5187,7 @@ void allintraBody(FrameData* frames, int nframes, FILE* fp, evx::entropy_coder& 
 					// for(int n=0; n<ACbits; n++)
 					// 	(frame[cntbits++/8]<<=1) |= ACResult[n];
 					// free(ACResult);
-					ACResult = ACentropyCabac(bd.intraReorderedblck8[nblck8], ACbits, acCoder, stats); // AC entropy result ?bits; 63 values
+					ACResult = ACentropy(bd.intraReorderedblck8[nblck8], ACbits, acCoder, stats); // AC entropy result ?bits; 63 values
 					for(int n=0; n<ACbits; n++)
 						(frame[cntbits++/8]<<=1) |= ACResult[n];
 					free(ACResult);
@@ -5208,7 +5208,7 @@ void allintraBody(FrameData* frames, int nframes, FILE* fp, evx::entropy_coder& 
 			// for(int n=0; n<DCbits; n++)
 			// 	(frame[cntbits++/8]<<=1) |= DCResult[n];
 			// free(DCResult);
-			DCResult = DCentropyCabac(cbbd.intraReorderedblck[0], DCbits, dcCoder, stats); // DC entropy result ?bits; one value
+			DCResult = DCentropy(cbbd.intraReorderedblck[0], DCbits, dcCoder, stats); // DC entropy result ?bits; one value
 			for(int n=0; n<DCbits; n++)
 				(frame[cntbits++/8]<<=1) |= DCResult[n];
 			free(DCResult);
@@ -5233,7 +5233,7 @@ void allintraBody(FrameData* frames, int nframes, FILE* fp, evx::entropy_coder& 
 				// for(int n=0; n<ACbits; n++)
 				// 	(frame[cntbits++/8]<<=1) |= ACResult[n];
 				// free(ACResult);
-				ACResult = ACentropyCabac(cbbd.intraReorderedblck, ACbits, acCoder, stats); // AC entropy result ?bits; 63 values
+				ACResult = ACentropy(cbbd.intraReorderedblck, ACbits, acCoder, stats); // AC entropy result ?bits; 63 values
 				for(int n=0; n<ACbits; n++)
 					(frame[cntbits++/8]<<=1) |= ACResult[n];
 				free(ACResult);
@@ -5249,7 +5249,7 @@ void allintraBody(FrameData* frames, int nframes, FILE* fp, evx::entropy_coder& 
 			// for(int n=0; n<DCbits; n++)
 			// 	(frame[cntbits++/8]<<=1) |= DCResult[n];
 			// free(DCResult);
-			DCResult = DCentropyCabac(crbd.intraReorderedblck[0], DCbits, dcCoder, stats); // DC entropy result ?bits; one value
+			DCResult = DCentropy(crbd.intraReorderedblck[0], DCbits, dcCoder, stats); // DC entropy result ?bits; one value
 			for(int n=0; n<DCbits; n++)
 				(frame[cntbits++/8]<<=1) |= DCResult[n];
 			free(DCResult);
@@ -5273,7 +5273,7 @@ void allintraBody(FrameData* frames, int nframes, FILE* fp, evx::entropy_coder& 
 				// for(int n=0; n<ACbits; n++)
 				// 	(frame[cntbits++/8]<<=1) |= ACResult[n];
 				// free(ACResult);
-				ACResult = ACentropyCabac(crbd.intraReorderedblck, ACbits, acCoder, stats); // AC entropy result ?bits; 63 values
+				ACResult = ACentropy(crbd.intraReorderedblck, ACbits, acCoder, stats); // AC entropy result ?bits; 63 values
 				for(int n=0; n<ACbits; n++)
 					(frame[cntbits++/8]<<=1) |= ACResult[n];
 				free(ACResult);
@@ -5332,7 +5332,7 @@ void intraBody(FrameData& frm, unsigned char* tempFrame, int& cntbits, evx::entr
 			// for(int n=0; n<DCbits; n++)
 			// 	(tempFrame[cntbits++/8]<<=1) |= DCResult[n];
 			// free(DCResult);
-			DCResult = DCentropyCabac(bd.intraReorderedblck8[nblck8][0], DCbits, dcCoder, stats); // DC entropy result ?bits; one value
+			DCResult = DCentropy(bd.intraReorderedblck8[nblck8][0], DCbits, dcCoder, stats); // DC entropy result ?bits; one value
 			for(int n=0; n<DCbits; n++)
 				(tempFrame[cntbits++/8]<<=1) |= DCResult[n];
 			free(DCResult);
@@ -5356,7 +5356,7 @@ void intraBody(FrameData& frm, unsigned char* tempFrame, int& cntbits, evx::entr
 				// for(int n=0; n<ACbits; n++)
 				// 	(tempFrame[cntbits++/8]<<=1) |= ACResult[n];
 				// free(ACResult);
-				ACResult = ACentropyCabac(bd.intraReorderedblck8[nblck8], ACbits, acCoder, stats); // AC entropy result ?bits; 63 values
+				ACResult = ACentropy(bd.intraReorderedblck8[nblck8], ACbits, acCoder, stats); // AC entropy result ?bits; 63 values
 				for(int n=0; n<ACbits; n++)
 					(tempFrame[cntbits++/8]<<=1) |= ACResult[n];
 				free(ACResult);
@@ -5378,7 +5378,7 @@ void intraBody(FrameData& frm, unsigned char* tempFrame, int& cntbits, evx::entr
 		// for(int n=0; n<DCbits; n++)
 		// 	(tempFrame[cntbits++/8]<<=1) |= DCResult[n];
 		// free(DCResult);
-		DCResult = DCentropyCabac(cbbd.intraReorderedblck[0], DCbits, dcCoder, stats);		 // DC entropy result ?bits; one value
+		DCResult = DCentropy(cbbd.intraReorderedblck[0], DCbits, dcCoder, stats);		 // DC entropy result ?bits; one value
 		for(int n=0; n<DCbits; n++)
 			(tempFrame[cntbits++/8]<<=1) |= DCResult[n];
 		free(DCResult);
@@ -5402,7 +5402,7 @@ void intraBody(FrameData& frm, unsigned char* tempFrame, int& cntbits, evx::entr
 			// for(int n=0; n<ACbits; n++)
 			// 	(tempFrame[cntbits++/8]<<=1) |= ACResult[n];
 			// free(ACResult);
-			ACResult = ACentropyCabac(cbbd.intraReorderedblck, ACbits, acCoder, stats); // AC entropy result ?bits; 63 values
+			ACResult = ACentropy(cbbd.intraReorderedblck, ACbits, acCoder, stats); // AC entropy result ?bits; 63 values
 			for(int n=0; n<ACbits; n++)
 				(tempFrame[cntbits++/8]<<=1) |= ACResult[n];
 			free(ACResult);
@@ -5419,7 +5419,7 @@ void intraBody(FrameData& frm, unsigned char* tempFrame, int& cntbits, evx::entr
 		// for(int n=0; n<DCbits; n++)
 		// 	(tempFrame[cntbits++/8]<<=1) |= DCResult[n];
 		// free(DCResult);
-		DCResult = DCentropyCabac(crbd.intraReorderedblck[0], DCbits, dcCoder, stats); // DC entropy result ?bits; one value
+		DCResult = DCentropy(crbd.intraReorderedblck[0], DCbits, dcCoder, stats); // DC entropy result ?bits; one value
 		for(int n=0; n<DCbits; n++)
 			(tempFrame[cntbits++/8]<<=1) |= DCResult[n];
 		free(DCResult);
@@ -5443,7 +5443,7 @@ void intraBody(FrameData& frm, unsigned char* tempFrame, int& cntbits, evx::entr
 			// for(int n=0; n<ACbits; n++)
 			// 	(tempFrame[cntbits++/8]<<=1) |= ACResult[n];
 			// free(ACResult);
-			ACResult = ACentropyCabac(crbd.intraReorderedblck, ACbits, acCoder, stats); // AC entropy result ?bits; 63 values
+			ACResult = ACentropy(crbd.intraReorderedblck, ACbits, acCoder, stats); // AC entropy result ?bits; 63 values
 			for(int n=0; n<ACbits; n++)
 				(tempFrame[cntbits++/8]<<=1) |= ACResult[n];
 			free(ACResult);
@@ -5485,7 +5485,7 @@ void interBody(FrameData& frm, unsigned char* tempFrame, int& cntbits, evx::entr
 		// for(int n=0; n<xMVbits+yMVbits; n++)
 		// 		(tempFrame[cntbits++/8]<<=1) |= MVResult[n];
 		// free(MVResult);
-		MVResult = MVentropyCabac(bd.mv, xMVbits, yMVbits, mvCoder, stats);  // mv; Reconstructedmv�� ���к��Ͱ� �������°� �ƴ� ���� ������ ���͸� ��������; �׷��� mv�� ����
+		MVResult = MVentropy(bd.mv, xMVbits, yMVbits, mvCoder, stats);  // mv; Reconstructedmv�� ���к��Ͱ� �������°� �ƴ� ���� ������ ���͸� ��������; �׷��� mv�� ����
 		for(int n=0; n<xMVbits+yMVbits; n++)
 				(tempFrame[cntbits++/8]<<=1) |= MVResult[n];
 		free(MVResult);
@@ -5504,7 +5504,7 @@ void interBody(FrameData& frm, unsigned char* tempFrame, int& cntbits, evx::entr
 			// for(int n=0; n<DCbits; n++)
 			// 	(tempFrame[cntbits++/8]<<=1) |= DCResult[n];
 			// free(DCResult);
-			DCResult = DCentropyCabac(bd.interReorderedblck8[nblck8][0], DCbits, dcCoder, stats); // DC entropy result ?bits; one value
+			DCResult = DCentropy(bd.interReorderedblck8[nblck8][0], DCbits, dcCoder, stats); // DC entropy result ?bits; one value
 			for(int n=0; n<DCbits; n++)
 				(tempFrame[cntbits++/8]<<=1) |= DCResult[n];
 			free(DCResult);
@@ -5528,7 +5528,7 @@ void interBody(FrameData& frm, unsigned char* tempFrame, int& cntbits, evx::entr
 				// for(int n=0; n<ACbits; n++)
 				// 	(tempFrame[cntbits++/8]<<=1) |= ACResult[n];
 				// free(ACResult);
-				ACResult = ACentropyCabac(bd.interReorderedblck8[nblck8], ACbits, acCoder, stats); // AC entropy result ?bits; 63 values
+				ACResult = ACentropy(bd.interReorderedblck8[nblck8], ACbits, acCoder, stats); // AC entropy result ?bits; 63 values
 				for(int n=0; n<ACbits; n++)
 					(tempFrame[cntbits++/8]<<=1) |= ACResult[n];
 				free(ACResult);
@@ -5551,7 +5551,7 @@ void interBody(FrameData& frm, unsigned char* tempFrame, int& cntbits, evx::entr
 		// for(int n=0; n<DCbits; n++)
 		// 	(tempFrame[cntbits++/8]<<=1) |= DCResult[n];
 		// free(DCResult);
-		DCResult = DCentropyCabac(cbbd.interReorderedblck[0], DCbits, dcCoder, stats); // DC entropy result ?bits; one value
+		DCResult = DCentropy(cbbd.interReorderedblck[0], DCbits, dcCoder, stats); // DC entropy result ?bits; one value
 		for(int n=0; n<DCbits; n++)
 			(tempFrame[cntbits++/8]<<=1) |= DCResult[n];
 		free(DCResult);
@@ -5575,7 +5575,7 @@ void interBody(FrameData& frm, unsigned char* tempFrame, int& cntbits, evx::entr
 			// for(int n=0; n<ACbits; n++)
 			// 	(tempFrame[cntbits++/8]<<=1) |= ACResult[n];
 			// free(ACResult);
-			ACResult = ACentropyCabac(cbbd.interReorderedblck, ACbits, acCoder, stats); // AC entropy result ?bits; 63 values
+			ACResult = ACentropy(cbbd.interReorderedblck, ACbits, acCoder, stats); // AC entropy result ?bits; 63 values
 			for(int n=0; n<ACbits; n++)
 				(tempFrame[cntbits++/8]<<=1) |= ACResult[n];
 			free(ACResult);
@@ -5592,7 +5592,7 @@ void interBody(FrameData& frm, unsigned char* tempFrame, int& cntbits, evx::entr
 		// for(int n=0; n<DCbits; n++)
 		// 	(tempFrame[cntbits++/8]<<=1) |= DCResult[n];
 		// free(DCResult);
-		DCResult = DCentropyCabac(crbd.interReorderedblck[0], DCbits, dcCoder, stats); // DC entropy result ?bits; one value
+		DCResult = DCentropy(crbd.interReorderedblck[0], DCbits, dcCoder, stats); // DC entropy result ?bits; one value
 		for(int n=0; n<DCbits; n++)
 			(tempFrame[cntbits++/8]<<=1) |= DCResult[n];
 		free(DCResult);
@@ -5616,7 +5616,7 @@ void interBody(FrameData& frm, unsigned char* tempFrame, int& cntbits, evx::entr
 			// for(int n=0; n<ACbits; n++)
 			// 	(tempFrame[cntbits++/8]<<=1) |= ACResult[n];
 			// free(ACResult);
-			ACResult = ACentropyCabac(crbd.interReorderedblck, ACbits, acCoder, stats); // AC entropy result ?bits; 63 values
+			ACResult = ACentropy(crbd.interReorderedblck, ACbits, acCoder, stats); // AC entropy result ?bits; 63 values
 			for(int n=0; n<ACbits; n++)
 				(tempFrame[cntbits++/8]<<=1) |= ACResult[n];
 			free(ACResult);
@@ -6198,7 +6198,7 @@ int ACentropy(int* reordblck, unsigned char *ACentropyResult)
 
 	return nbits;
 }
-unsigned char* ACentropyOriginal(int* reordblck, int& nbits){
+unsigned char* ACentropyOriginal(int* reordblck, int& nbits,Statistics* stats ){
 	int value  = 0;
 	int sign   = 0;
 	int exp    = 0;
@@ -6409,7 +6409,7 @@ unsigned char* ACentropy(int* reordblck, int& nbits, evx::entropy_coder& encoder
 {
 	if (EC == EntropyCoding::Cabac) return ACentropyCabac(reordblck, nbits, encoder, stats);
 	else if (EC == EntropyCoding::Huffman)  return ACentropyHuffman(reordblck, nbits);
-	return ACentropyOriginal(reordblck, nbits);
+	return ACentropyOriginal(reordblck, nbits,stats);
 	
 }
 
