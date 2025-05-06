@@ -9,6 +9,9 @@
 #include <time.h>
 #include <limits.h>
 
+#include "abac/bitstream.h"
+#include "abac/cabac.h"
+
 using namespace std;
 
 #ifdef WIN_MODE
@@ -82,9 +85,13 @@ typedef struct
 
 typedef struct 
 {
+	// Big block size, 16x16
 	int blocksize1;
+	// Small block size, 8x8
 	int blocksize2;
+	// Original Y values, in blocks of size `blocksize1`
 	Block16u *originalblck16;
+	// Original Y values, in blocks of size `blocksize2`
 	Block8u **originalblck8;
 	Block8i **intraErrblck;
 	int DPCMmodePred[4];
@@ -138,23 +145,38 @@ typedef struct
 
 typedef struct
 {
-	unsigned char *Y;	// Y  ������ ����; ���߿� �����ص� �ǰڴµ�?
-	unsigned char *Cb;	// Cb ������ ����; ���߿� �����ص� �ǰڴµ�?
-	unsigned char *Cr;	// Cr ������ ����; ���߿� �����ص� �ǰڴµ�?
-	BlockData *blocks;	// �� �����ӿ� ���� ���� ����; ����ü �迭�� ����
+	// Raw Y values
+	unsigned char *Y;
+	// Raw U values
+	unsigned char *Cb;
+	// Raw V values
+	unsigned char *Cr;
+	// Y values in blocks of 16x16 and 8x8
+	BlockData *blocks;
+	// U values in blocks of 8x8
 	CBlockData *Cbblocks;
+	// V values in blocks of 8x8
 	CBlockData *Crblocks;
 
-	int nblocks16;		// �ٸ�����ü�� ��ġ�ٲ�� ����
+	// Total number of 16x16 blocks
+	int nblocks16;
+	// Number of 8x8 blocks in one 16x16 block (despite the var name, see initialization in `splitBlocks`)
 	int nblocks8;
+	// Number of 16x16 blocks in width
 	int splitWidth;
+	// Number of 16x16 blocks in height
 	int splitHeight;
 	int numOfFrame;
 		
+	// Number of UV values in width
 	int CbCrWidth;
+	// Number of UV values in height
 	int CbCrHeight;
+	// Number of UV blocks in width
 	int CbCrSplitWidth;
+	// Number of UV blocks in height
 	int CbCrSplitHeight;
+	// Total UV values (despite the var name, see initialization in `splitBlocks`)
 	int totalcbcrblck;
 
 	unsigned char *reconstructedY;	// ���� �������� �����ϰų� ����ϰ� ���� ������ �����Ǿ��� �������� free �ص��� ��
@@ -226,6 +248,20 @@ struct Statistics {
 	unsigned totalDcBits[frameCount];
 	unsigned totalMvBits[frameCount];
 	unsigned totalEntropyBits[frameCount];
+
+	// Values range from 2 to 22
+	static constexpr auto histNbitsSize = 24;
+	unsigned dcNbitsHistogram[histNbitsSize];
+	unsigned acNbitsHistogram[histNbitsSize];
+	unsigned mvxNbitsHistogram[histNbitsSize];
+	unsigned mvyNbitsHistogram[histNbitsSize];
+
+	// Values range from 0 to infinity but we cap them at 2048
+	static constexpr auto histValueSize = 2049;
+	unsigned dcValuesHistogram[histValueSize];
+	unsigned acValuesHistogram[histValueSize];
+	unsigned mvxValuesHistogram[histValueSize];
+	unsigned mvyValuesHistogram[histValueSize];
 };
 
 class IcspCodec
@@ -243,7 +279,9 @@ public:
 };
 /*Data collection functions*/
 void computePsnr(FrameData* frames,const int nframes,const int width, const int height ,Statistics *stats);
-void writeCsvData(const Statistics &stats, char* fname, int intra_period, int QstepDC, int QstepAC);
+void writeFrameStats(const Statistics &stats, char* fname, int intra_period, int QstepDC, int QstepAC);
+void writeHistogramBitsizeStats(const Statistics &stats, char* fname, int intra_period, int QstepDC, int QstepAC);
+void writeHistogramValueStats(const Statistics &stats, char* fname, int intra_period, int QstepDC, int QstepAC);
 /* parsing command function */
 void set_command_options(int argc, char *argv[], cmd_options_t* cmd);
 
@@ -328,15 +366,20 @@ void entropyCoding(int* reordblck, int length);
 void entropyCoding(FrameData& frm, int predmode);
 void makebitstream(FrameData* frames, int nframes, int height, int width, int QstepDC, int QstepAC, int intraPeriod, int predmode, Statistics *stats = nullptr);
 void headerinit(header& hd, int height, int width, int QstepDC, int QstepAC, int intraPeriod);
-void allintraBody(FrameData* frames, int nframes, FILE* fp, Statistics *stats = nullptr);
-void intraBody(FrameData& frm, unsigned char* tempFrame, int& cntbits, Statistics *stats = nullptr);
-void interBody(FrameData& frm, unsigned char* tempFrame, int& cntbits, Statistics *stats = nullptr);
+void allintraBody(FrameData* frames, int nframes, FILE* fp, evx::entropy_coder& dcCoder, evx::entropy_coder& acCoder, Statistics *stats = nullptr);
+void intraBody(FrameData& frm, unsigned char* tempFrame, int& cntbits, evx::entropy_coder& dcCoder, evx::entropy_coder& acCoder, Statistics *stats = nullptr);
+void interBody(FrameData& frm, unsigned char* tempFrame, int& cntbits, evx::entropy_coder& dcCoder, evx::entropy_coder& acCoder, evx::entropy_coder& mvCoder, Statistics *stats = nullptr);
 int DCentropy(int DCval, unsigned char *DCentropyResult);
-unsigned char* DCentropy(int DCval, int& nbits);
+unsigned char* DCentropy(int DCval, int& nbits, Statistics* stats = nullptr);
 int ACentropy(int* reordblck, unsigned char *ACentropyResult);
-unsigned char* ACentropy(int* reordblck, int& nbits);
+unsigned char* ACentropy(int* reordblck, int& nbits, Statistics* stats = nullptr);
 unsigned char* ACentropyHuffman(int* reordblck, int& nbits);
 unsigned char* ACentropyOriginal(int* reordblck, int& nbits);
-unsigned char* MVentropy(MotionVector mv, int& nbitsx, int& nbitsy);
+unsigned char* MVentropy(MotionVector mv, int& nbitsx, int& nbitsy, Statistics* stats = nullptr);
+
+// Cabac entropy functions
+unsigned char* dcCabacEntropy(int DCval, int& nbits, evx::entropy_coder& encoder, Statistics* stats = nullptr);
+unsigned char* acCabacEntropy(int* reordblck, int& nbits, evx::entropy_coder& encoder, Statistics* stats = nullptr);
+unsigned char* mvCabacEntropy(MotionVector mv, int& nbitsx, int& nbitsy, evx::entropy_coder& encoder, Statistics* stats = nullptr);
 
 #endif //ICSP_CODEC_ENCODER
