@@ -22,11 +22,14 @@ def generate_mv_video(mv_path, dst_dir):
         ax.set_ylim([0, 288])
         ax.invert_yaxis()
         ax.axis("off")
-        # nx = mv["MvDirX"]
-        # ny = mv["MvDirY"]
-        nx = mv["MvDirX"] / (np.sqrt(mv["MvDirX"]) ** 2 + np.sqrt(mv["MvDirY"] ** 2))
-        ny = mv["MvDirY"] / (np.sqrt(mv["MvDirX"]) ** 2 + np.sqrt(mv["MvDirY"] ** 2))
-        ax.quiver(mv["MvPosX"], mv["MvPosY"], nx, ny)
+        nx = mv["MvDirX"]
+        ny = mv["MvDirY"]
+
+        # nx *= -1
+        # ny *= -1
+        # nx = mv["MvDirX"] / (np.sqrt(mv["MvDirX"]) ** 2 + np.sqrt(mv["MvDirY"] ** 2))
+        # ny = mv["MvDirY"] / (np.sqrt(mv["MvDirX"]) ** 2 + np.sqrt(mv["MvDirY"] ** 2))
+        ax.quiver(mv["MvPosX"], mv["MvPosY"], nx, ny, angles="xy", width=0.002, scale_units="xy", scale=.8)
         out_name = dst_dir.joinpath(f"{frm:03d}-mv.png")
         plt.savefig(out_name, transparent=True, bbox_inches="tight", pad_inches=0)
         # plt.show()

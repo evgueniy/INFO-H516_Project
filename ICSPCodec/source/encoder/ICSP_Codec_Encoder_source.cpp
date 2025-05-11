@@ -2263,13 +2263,13 @@ void motionEstimation(FrameData& cntFrm, FrameData& prevFrm)
 	unsigned char spiralblck[16][16] = { 0, };
 
 	int y0=0, x0=0, cntX0=0, cntY0=0, tempX=0, tempY=0;
-	int flag=0, xflag=1, yflag=-1;
+	int flag=0/*moving x or y*/, xflag=1/*moving x up or down*/, yflag=-1/*moving y up or down*/;
 	int xcnt=0, ycnt=0;
 	int totalblck = cntFrm.nblocks16;
 	int SADflag=1;
 	int SAD=0, min=INT_MAX;
 	int cnt=0;
-	int nSearch = 64; // spiral search ��ȸ��
+	int nSearch = 128; // spiral search ��ȸ��
 
 	for(int nblck=0; nblck<totalblck && SADflag; nblck++)
 	{	
@@ -2277,23 +2277,12 @@ void motionEstimation(FrameData& cntFrm, FrameData& prevFrm)
 		min = INT_MAX; SAD = 0;	cnt = 0; SADflag=1;
 		cntX0 = x0 = (nblck%splitWidth)*blocksize1;
 		cntY0 = y0 = (nblck/splitWidth)*blocksize1;
-		xcnt=0; ycnt=0;
+		xcnt=1; ycnt=1;
+		flag=0, xflag=1, yflag=1;
 
 		while(cnt<nSearch) // ��ü ȸ�� 64�� �̴���; ������ ���ɼ��� ũ��
 		{	
 			SAD = 0;
-			if(!flag) // x��ȭ
-			{
-				if(xflag<=0) x0 += xcnt;
-				else		 x0 -= xcnt;
-				flag=1; xcnt++; xflag*=-1;
-			}
-			else if(flag) // y��ȭ
-			{
-				if(yflag<0)  y0 += ycnt;
-				else		 y0 -= ycnt;
-				flag=0;	ycnt++; yflag*=-1;
-			}
 
 			get16block(paddingImage, spiralblck, (padlen+y0), (padlen+x0), padImgWidth, blocksize1);
 			SAD = getSAD(currentblck->block, spiralblck, blocksize1);
@@ -2312,6 +2301,27 @@ void motionEstimation(FrameData& cntFrm, FrameData& prevFrm)
 			}
 
 			cnt++;
+
+			// Spiral search
+			if (!flag) {
+				// Move the x
+				x0 += xflag;
+				xcnt--;
+				if (xcnt <= 0) {
+					xcnt = ycnt + 1;
+					flag = 1;
+					xflag *= -1;
+				}
+			} else {
+				// Move the y
+				y0 += yflag;
+				ycnt--;
+				if (ycnt <= 0) {
+					ycnt = xcnt;
+					flag = 0;
+					yflag *= -1;
+				}
+			}
 		}
 		cntFrm.blocks[nblck].mv.x = cntX0 - tempX;
 		cntFrm.blocks[nblck].mv.y = cntY0 - tempY;
@@ -2398,6 +2408,7 @@ void motionCompensation(FrameData& cntFrm, FrameData& prevFrm)
 void getPaddingImage(unsigned char* src, unsigned char* dst, int padWidth, int padlen, int width, int height)
 {
 
+	// Fill inside with initial image
 	for(int y=0; y<height; y++)
 		for(int x=0; x<width; x++)
 			dst[(y*padWidth+padlen*padWidth)+(x+padlen)] = src[y*width+x];
@@ -2406,7 +2417,7 @@ void getPaddingImage(unsigned char* src, unsigned char* dst, int padWidth, int p
 	cout << "getpad" << endl;
 	system("pause");*/
 
-	// ����
+	// Fill upper and bottom central pad band by extending edge
 	for(int y=0; y<padlen; y++)
 	{
 		for(int x=0; x<width; x++)
@@ -2416,17 +2427,19 @@ void getPaddingImage(unsigned char* src, unsigned char* dst, int padWidth, int p
 		}
 	}
 
-	// �Ʒ���
+	// Fill left and right central pad band by extending edge
 	for(int y=0; y<height; y++)
 	{
 		for(int x=0; x<padlen; x++)
 		{
+			// Fill left by extending edge
 			dst[((y+padlen)*padWidth) + x] = src[y*width];
+			// Fill right by extending edge
 			dst[((y+padlen)*padWidth) + x+(width+padlen-1)] = src[y*width+(width-1)];
 		}
 	}
 
-	// 4 �𼭸�
+	// Fill 4 corners by extending the image corner value
 	for(int y=0; y<padlen; y++)
 	{
 		for(int x=0; x<padlen; x++)
@@ -2532,17 +2545,20 @@ void mvPrediction(FrameData& cntFrm, int numOfblck16)
 
 	BlockData& bd = cntFrm.blocks[numOfblck16];
 
+	// First block
 	if(numOfblck16==0)
 	{
 		bd.mv.x = bd.mv.x-8;
 		bd.mv.y = bd.mv.y-8;
 	}
+	// On first line
 	else if(numOfblck16/splitWidth==0)
 	{
 		BlockData& prevbd = cntFrm.blocks[numOfblck16-1];
 		bd.mv.x = bd.mv.x-prevbd.Reconstructedmv.x;
 		bd.mv.y = bd.mv.y-prevbd.Reconstructedmv.y;
 	}
+	// On left edge
 	else if(numOfblck16%splitWidth==0)
 	{			
 		BlockData& prevbd = cntFrm.blocks[numOfblck16-splitWidth];
@@ -2551,6 +2567,7 @@ void mvPrediction(FrameData& cntFrm, int numOfblck16)
 	}
 	else
 	{			
+		// On right edge
 		if(numOfblck16%splitWidth==splitWidth-1)
 		{
 			// median l ul u
@@ -2570,6 +2587,7 @@ void mvPrediction(FrameData& cntFrm, int numOfblck16)
 			else if((y2>y1)&&(y2>y3)) ymedian = (y1>x3)?y1:y3;
 			else					  ymedian = (y1>y2)?y1:y2;
 		}
+		// Everything else
 		else
 		{
 			// median l u ur
