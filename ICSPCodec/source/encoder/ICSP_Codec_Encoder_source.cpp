@@ -6861,9 +6861,9 @@ unsigned char* ACentropyCabac(int* reordblck, int& nbits, evx::entropy_coder& en
 }
 
 unsigned char* MVentropyCabac(MotionVector mv, int& nbitsx, int& nbitsy, evx::entropy_coder& encoder, Statistics* stats) {
-	auto src_x = evx::bitstream {(void *) &mv.x, 32};
-	auto src_y = evx::bitstream {(void *) &mv.y, 32};
-	auto dst = evx::bitstream {32 * 2};
+	auto src_x = evx::bitstream {(void *) &mv.x, sizeof(int)};
+	auto src_y = evx::bitstream {(void *) &mv.y, sizeof(int)};
+	auto dst = evx::bitstream {sizeof(int) * 8 * 2};
 	encoder.encode(&src_x, &dst, false);
 	nbitsx = dst.query_occupancy();
 	encoder.encode(&src_y, &dst, false);
