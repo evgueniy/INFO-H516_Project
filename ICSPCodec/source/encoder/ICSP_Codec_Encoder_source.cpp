@@ -5290,6 +5290,8 @@ void allintraBody(FrameData* frames, int nframes, FILE* fp, evx::entropy_coder& 
 			stats->totalEntropyBits[i] = stats->totalAcBits[i] + stats->totalDcBits[i];
 		}
 	}
+	dcCoder.clear();
+	acCoder.clear();
 	fwrite(frame, (cntbits/8)+1, 1, fp); 
 	free(frame);
 }
