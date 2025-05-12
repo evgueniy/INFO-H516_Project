@@ -5459,6 +5459,8 @@ void intraBody(FrameData& frm, unsigned char* tempFrame, int& cntbits, evx::entr
 		// We do not have MV bits here as it’s an intra frame
 		stats->totalEntropyBits[i] = stats->totalAcBits[i] + stats->totalDcBits[i];
 	}
+	dcCoder.clear();
+	acCoder.clear();
 }
 void interBody(FrameData& frm, unsigned char* tempFrame, int& cntbits, evx::entropy_coder& dcCoder, evx::entropy_coder& acCoder, evx::entropy_coder& mvCoder, Statistics *stats)
 {
@@ -5632,6 +5634,9 @@ void interBody(FrameData& frm, unsigned char* tempFrame, int& cntbits, evx::entr
 		// Here we have bits for all
 		stats->totalEntropyBits[i] = stats->totalAcBits[i] + stats->totalDcBits[i] + stats->totalMvBits[i];
 	}
+	dcCoder.clear();
+	acCoder.clear();
+	mvCoder.clear();
 }
 int DCentropy(int DCval, unsigned char *DCentropyResult)
 {

@@ -349,7 +349,7 @@ evx_status entropy_coder::encode(bitstream *source, bitstream *dest, bool auto_f
             return evx_post_error(EVX_ERROR_EXECUTION_FAILURE);
         }
 
-        clear();
+        // clear();
     }
 
     return EVX_SUCCESS;
