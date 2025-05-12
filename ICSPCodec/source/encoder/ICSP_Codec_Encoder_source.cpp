@@ -5128,7 +5128,7 @@ void allintraBody(FrameData* frames, int nframes, FILE* fp, evx::entropy_coder& 
 	int totalblck = frames->nblocks16;
 	int nblock8   = frames->nblocks8;
 	int idx       = 0;
-	int maxbits   = frames->splitHeight * frames->splitWidth * frames->blocks->blocksize1 * frames->blocks->blocksize1 * 8 * nframes; // Y ä�θ� ����
+	int maxbits   = frames->splitHeight * frames->splitWidth * frames->blocks->blocksize1 * frames->blocks->blocksize1 * 8 * nframes * 6; // Y ä�θ� ����
 	
 	int cntbits   = 0;
 	int DCbits    = 0;
@@ -6835,8 +6835,8 @@ unsigned char* MVentropy(MotionVector mv, int& nbitsx, int& nbitsy,evx::entropy_
 }
 
 unsigned char* DCentropyCabac(int DCval, int& nbits, evx::entropy_coder& encoder, Statistics* stats) {
-	auto src = evx::bitstream {(void *) &DCval, 32};
-	auto dst = evx::bitstream {32};
+	auto src = evx::bitstream {(void *) &DCval, sizeof(int)};
+	auto dst = evx::bitstream {(sizeof(int) << 3)};
 	encoder.encode(&src, &dst, false);
 	nbits = dst.query_occupancy();
 	auto DCentropyResult = (unsigned char*)malloc(sizeof(unsigned char)*nbits);	
@@ -6848,8 +6848,8 @@ unsigned char* DCentropyCabac(int DCval, int& nbits, evx::entropy_coder& encoder
 
 unsigned char* ACentropyCabac(int* reordblck, int& nbits, evx::entropy_coder& encoder, Statistics* stats) {
 	// Size of 63 ints, as much as the AC values
-	constexpr unsigned len = sizeof(int) * 8 * 63;
-	auto src = evx::bitstream {(void *) reordblck, len};
+	constexpr unsigned len = sizeof(int) * 63;
+	auto src = evx::bitstream {(void *) (reordblck + 1), len};
 	auto dst = evx::bitstream {len};
 	encoder.encode(&src, &dst, false);
 	nbits = dst.query_occupancy();
