@@ -5146,6 +5146,121 @@ void headerinit(header& hd, int height, int width, int QstepDC, int QstepAC, int
 		(hd.outro <<= 1) |= 0;	// last bits = 0;
 	}
 }
+void allintraBodyCabac(FrameData* frames, int nframes, int QstepDC, FILE* fp, Statistics *stats) {
+    int totalblck = frames->nblocks16;
+    int nblock8   = frames->nblocks8;
+    int maxbytes  = frames->splitHeight * frames->splitWidth * frames->blocks->blocksize1 *
+                    frames->blocks->blocksize1 * 8 * nframes * 2; // estimate in bytes
+
+    // Allocate output buffer
+    uint8_t* frame = (uint8_t*)malloc(sizeof(uint8_t) * maxbytes);
+    if (frame == NULL) {
+        std::cerr << "Failed to allocate memory for CABAC output.\n";
+        exit(-1);
+    }
+    uint8_t* frameEnd = frame + maxbytes;
+
+    for (int nfrm = 0; nfrm < nframes; nfrm++) {
+        x264_cabac_t cb;
+        x264_cabac_context_init(&cb, SLICE_TYPE_I, QstepDC, 0);
+        x264_cabac_encode_init(&cb, frame, frameEnd);
+
+        for (int nblck16 = 0; nblck16 < totalblck; nblck16++) {
+            BlockData& bd = frames[nfrm].blocks[nblck16];
+            for (int nblck8 = 0; nblck8 < nblock8; nblck8++) {
+                x264_cabac_encode_decision(&cb, CTX_MPM_FLAG, bd.MPMFlag[nblck8]);
+                x264_cabac_encode_decision(&cb, CTX_INTRA_PRED, bd.intraPredMode[nblck8]);
+				int pos0 = x264_cabac_pos(&cb);
+                int dc = bd.intraReorderedblck8[nblck8][0];
+                x264_cabac_encode_decision(&cb, CTX_IDX_DC, dc != 0);
+                if (dc) {
+                    x264_cabac_encode_ue_bypass(&cb, 0, abs(dc));
+                    x264_cabac_encode_bypass(&cb, dc < 0);
+                }
+
+                if (stats)
+                    stats->totalDcBits[frames[nfrm].numOfFrame] += x264_cabac_pos(&cb) - pos0;
+
+                pos0 = x264_cabac_pos(&cb);
+                x264_cabac_encode_decision(&cb, CTX_AC_PRESENT, !bd.intraACflag[nblck8]);
+
+                if (bd.intraACflag[nblck8] == 1) {
+                    for (int i = 0; i < 63; i++)
+                        x264_cabac_encode_decision(&cb, CTX_IDX_AC_START + i, 0);
+                } else {
+                    for (int i = 0; i < 63; i++) {
+                        int16_t c = bd.intraReorderedblck8[nblck8][i + 1];
+                        int nz = (c != 0);
+                        x264_cabac_encode_decision(&cb, CTX_IDX_AC_START + i, nz);
+                        if (nz) {
+                            x264_cabac_encode_ue_bypass(&cb, 0, abs(c));
+                            x264_cabac_encode_bypass(&cb, c < 0);
+                        }
+                    }
+                }
+
+                if (stats)
+                    stats->totalAcBits[frames[nfrm].numOfFrame] += x264_cabac_pos(&cb) - pos0;
+            }
+
+            // Cb/Cr processing
+            CBlockData& cbbd = frames[nfrm].Cbblocks[nblck16];
+            CBlockData& crbd = frames[nfrm].Crblocks[nblck16];
+
+            for (int plane = 0; plane < 2; plane++) {
+                CBlockData& cbd = (plane == 0) ? cbbd : crbd;
+
+                int pos0 = x264_cabac_pos(&cb);
+                int dc = cbd.intraReorderedblck[0];
+                x264_cabac_encode_decision(&cb, CTX_IDX_DC, dc != 0);
+                if (dc) {
+                    x264_cabac_encode_ue_bypass(&cb, 0, abs(dc));
+                    x264_cabac_encode_bypass(&cb, dc < 0);
+                }
+
+                if (stats)
+                    stats->totalDcBits[frames[nfrm].numOfFrame] += x264_cabac_pos(&cb) - pos0;
+
+                pos0 = x264_cabac_pos(&cb);
+                x264_cabac_encode_decision(&cb, CTX_AC_PRESENT, !cbd.intraACflag);
+
+                if (cbd.intraACflag == 1) {
+                    for (int i = 0; i < 63; i++)
+                        x264_cabac_encode_decision(&cb, CTX_IDX_AC_START + i, 0);
+                } else {
+                    for (int i = 0; i < 63; i++) {
+                        int16_t c = cbd.intraReorderedblck[i + 1];
+                        int nz = (c != 0);
+                        x264_cabac_encode_decision(&cb, CTX_IDX_AC_START + i, nz);
+                        if (nz) {
+                            x264_cabac_encode_ue_bypass(&cb, 0, abs(c));
+                            x264_cabac_encode_bypass(&cb, c < 0);
+                        }
+                    }
+                }
+
+                if (stats)
+                    stats->totalAcBits[frames[nfrm].numOfFrame] += x264_cabac_pos(&cb) - pos0;
+            }
+        }
+
+        // Finalize CABAC encoding for this frame
+        x264_cabac_encode_terminal(&cb);
+        x264_cabac_encode_flush(nfrm, &cb);
+
+        // Calculate size of encoded data
+        size_t payload_size = cb.p - cb.p_start;
+        fwrite(cb.p_start, 1, payload_size, fp);
+
+        if (stats)
+            stats->totalEntropyBits[frames[nfrm].numOfFrame] = payload_size * 8;
+    }
+
+    free(frame);
+}
+
+
+
 void allintraBody(FrameData* frames, int nframes, FILE* fp, evx::entropy_coder& dcCoder, evx::entropy_coder& acCoder, Statistics *stats)
 {
 	int totalblck = frames->nblocks16;
