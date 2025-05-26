@@ -14,7 +14,6 @@ int main(int argc, char *argv[])
 	char* ptr = yuv_fname;
 	char* start = yuv_fname;
 	int size = 0;
-
 	// Get to end of filename
 	while (*ptr != 0) {
 		ptr++;
