@@ -5087,11 +5087,12 @@ void makebitstream(FrameData* frames, int nframes, int height, int width, int Qs
 
 		for(int n=0; n<nframes; n++)
 		{
-			x264_cabac_t cb;
-			int slice_type = (n % intraPeriod == 0) ? SLICE_TYPE_I : SLICE_TYPE_P;
-			x264_cabac_context_init(&cb, slice_type, QstepDC, 0);
-        	x264_cabac_encode_init(&cb, tempFrame, tempFrameEnd);
-			printf("before the IF\n");
+			if (EC == EntropyCoding::Cabac){
+				x264_cabac_t cb;
+				int slice_type = (n % intraPeriod == 0) ? SLICE_TYPE_I : SLICE_TYPE_P;
+				x264_cabac_context_init(&cb, slice_type, QstepDC, 0);
+        		x264_cabac_encode_init(&cb, tempFrame, tempFrameEnd);
+			}
 			if(n%intraPeriod==0)
 			{
 				if (EC == EntropyCoding::Cabac) intraBodyCabac(frames[n], tempFrame, cntbits, cb, stats);
@@ -5104,16 +5105,20 @@ void makebitstream(FrameData* frames, int nframes, int height, int width, int Qs
 				else interBody(frames[n], tempFrame, cntbits, dcCoder, acCoder, mvCoder, stats);
 				// cout << "inter frame bits: " << cntbits << endl;				
 			}
-			// Terminate & flush CABAC
-        	x264_cabac_encode_terminal(&cb);
-        	x264_cabac_encode_flush(n, &cb);
-        	// write out this frame's bitstream
-        	size_t payload = cb.p - cb.p_start;
-        	fwrite(cb.p_start, 1, payload, fp);
-        	if (stats)
-        	    stats->totalEntropyBits[frames[n].numOfFrame] = payload * 8;
+
+			if (EC == EntropyCoding::Cabac){
+				// Terminate & flush CABAC
+        		x264_cabac_encode_terminal(&cb);
+        		x264_cabac_encode_flush(n, &cb);
+        		// write out this frame's bitstream
+        		size_t payload = cb.p - cb.p_start;
+        		fwrite(cb.p_start, 1, payload, fp);
+        		if (stats)
+        		    stats->totalEntropyBits[frames[n].numOfFrame] = payload * 8;
+			}
 		}
-		fwrite(tempFrame, (cntbits/8)+1, 1, fp);
+		if (EC != EntropyCoding::Cabac)
+			fwrite(tempFrame, (cntbits/8)+1, 1, fp);
 		free(tempFrame);
 	}
 	
