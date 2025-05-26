@@ -5,12 +5,10 @@
 
 extern char filename[256];
 extern char resultDirectory[];
-
 int main(int argc, char *argv[])
 {	
 	cmd_options_t options;	
 	set_command_options(argc, argv, &options);
-
 	// split sequence name for saving bitstream output
 	char *yuv_fname = options.yuv_fname;
 	char* ptr = yuv_fname;
@@ -48,7 +46,9 @@ int main(int argc, char *argv[])
 	icspCodec.init(options.total_frames, options.yuv_fname, 352, 288, options.QP_DC, options.QP_AC);
 	icspCodec.encoding(&options, &stats);
 
-	writeCsvData(stats, filename, options.intra_period, options.QP_DC, options.QP_AC);
+	writeFrameStats(stats, filename, options.intra_period, options.QP_DC, options.QP_AC);
+	writeHistogramBitsizeStats(stats, filename, options.intra_period, options.QP_DC, options.QP_AC);
+	writeHistogramValueStats(stats, filename, options.intra_period, options.QP_DC, options.QP_AC);
 	
 	return 0;
 }

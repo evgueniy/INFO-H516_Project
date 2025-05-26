@@ -2,6 +2,55 @@
 #include "ICSP_thread.h"
 #include <pthread.h>
 
+#include "abac/bitstream.h"
+#include "abac/cabac.h"
+
+#include <iostream>
+#include <vector>
+#include <unordered_map>
+#include <queue>
+#include <string>
+#include <cstdlib>
+#include "cabac.h"
+using namespace std;
+
+// Node for Huffman tree
+struct HuffNode {
+	int value;
+	int freq;
+	HuffNode* left;
+	HuffNode* right;
+
+	HuffNode(int v, int f) : value(v), freq(f), left(nullptr), right(nullptr) {}
+	HuffNode(HuffNode* l, HuffNode* r) : value(-1), freq(l->freq + r->freq), left(l), right(r) {}
+};
+
+// Comparator for priority queue
+struct CompareNode {
+	bool operator()(HuffNode* a, HuffNode* b) {
+		return a->freq > b->freq;
+	}
+};
+
+// Recursively build the Huffman codes
+void buildCodes(HuffNode* node, const string& code, unordered_map<int, string>& codeMap) {
+	if (!node) return;
+	if (node->value >= 0) {
+		codeMap[node->value] = code;
+		return;
+	}
+	buildCodes(node->left, code + "0", codeMap);
+	buildCodes(node->right, code + "1", codeMap);
+}
+
+// Clean up tree
+void freeTree(HuffNode* node) {
+	if (!node) return;
+	freeTree(node->left);
+	freeTree(node->right);
+	delete node;
+}
+
 #define min(a, b) (((a) < (b)) ? (a) : (b))
 #define max(a, b) (((a) > (b)) ? (a) : (b))
 
@@ -11,7 +60,7 @@ char filename[256];
 // The code is executed in build/[Debug|Release], so to have the
 // results in the root directory, we go two levels up.
 char resultDirectory[] = "../../results";
-
+EntropyCoding EC = EntropyCoding::Original;
 #ifdef WIN_MODE
 /* benchmark function */
 namespace TimeCheck
@@ -101,11 +150,11 @@ void computePsnr(FrameData* frames,const int nframes,const int width, const int 
 	stats->psnr[nframes] = (mse > 0) ? 10 * log10((255 * 255)/total_mse) : INFINITY;
 }
 
-void writeCsvData(const Statistics &stats, char* fname, int intra_period, int QstepDC, int QstepAC){
+void writeFrameStats(const Statistics &stats, char* fname, int intra_period, int QstepDC, int QstepAC){
 	char fileName[256];
 
 	// File naming scheme original file name _ Qp _ Qp _ Intraperiod 
-	sprintf(fileName, "%s/%s_%d_%d_%d.csv",resultDirectory,fname,QstepDC,QstepAC,intra_period);
+	sprintf(fileName, "%s/%s_%d_%d_%d_%d.csv",resultDirectory,fname,QstepDC,QstepAC,intra_period,static_cast<int>(EC));
 	FILE *csv = fopen(fileName, "w");
 	if (!csv) {
         perror("Error opening the CSV file");
@@ -124,6 +173,79 @@ void writeCsvData(const Statistics &stats, char* fname, int intra_period, int Qs
 	fclose(csv);
 }
 
+void writeHistogramBitsizeStats(const Statistics &stats, char* fname, int intra_period, int QstepDC, int QstepAC){
+	char fileName[256];
+
+	// File naming scheme original file name _ Qp _ Qp _ Intraperiod 
+	sprintf(fileName, "%s/hist_bitsize_%s_%d_%d_%d.csv",resultDirectory,fname,QstepDC,QstepAC,intra_period);
+	FILE *csv = fopen(fileName, "w");
+	if (!csv) {
+        perror("Error opening the CSV file");
+        exit(1);
+    }
+	char line[256];
+	//header
+	//todo add PSNR per frame in header as well in data
+  sprintf(line, "Type;BitSize;Count\n");
+  fputs(line, csv);
+
+  int size = stats.histNbitsSize;
+	//data
+	for(int i = 0; i< size;i++){
+		sprintf(line, "DC;%u;%u\n", i, stats.dcNbitsHistogram[i]);
+    fputs(line, csv);
+	}
+	for(int i = 0; i< size;i++){
+		sprintf(line, "AC;%u;%u\n", i, stats.acNbitsHistogram[i]);
+    fputs(line, csv);
+	}
+	for(int i = 0; i< size;i++){
+		sprintf(line, "MVX;%u;%u\n", i, stats.mvxNbitsHistogram[i]);
+    fputs(line, csv);
+	}
+	for(int i = 0; i< size;i++){
+		sprintf(line, "MVY;%u;%u\n", i, stats.mvyNbitsHistogram[i]);
+    fputs(line, csv);
+	}
+	fclose(csv);
+}
+
+void writeHistogramValueStats(const Statistics &stats, char* fname, int intra_period, int QstepDC, int QstepAC){
+	char fileName[256];
+
+	// File naming scheme original file name _ Qp _ Qp _ Intraperiod 
+	sprintf(fileName, "%s/hist_value_%s_%d_%d_%d.csv",resultDirectory,fname,QstepDC,QstepAC,intra_period);
+	FILE *csv = fopen(fileName, "w");
+	if (!csv) {
+        perror("Error opening the CSV file");
+        exit(1);
+    }
+	char line[256];
+	//header
+  sprintf(line, "Type;Value;Count\n");
+  fputs(line, csv);
+
+  int size = stats.histValueSize;
+	//data
+	for(int i = 0; i< size;i++){
+		sprintf(line, "DC;%u;%u\n", i, stats.dcValuesHistogram[i]);
+    fputs(line, csv);
+	}
+	for(int i = 0; i< size;i++){
+		sprintf(line, "AC;%u;%u\n", i, stats.acValuesHistogram[i]);
+    fputs(line, csv);
+	}
+	for(int i = 0; i< size;i++){
+		sprintf(line, "MVX;%u;%u\n", i, stats.mvxValuesHistogram[i]);
+    fputs(line, csv);
+	}
+	for(int i = 0; i< size;i++){
+		sprintf(line, "MVY;%u;%u\n", i, stats.mvyValuesHistogram[i]);
+    fputs(line, csv);
+	}
+	fclose(csv);
+}
+
 /* parsing command function */
 static void init_cmd_options(cmd_options_t* cmd)
 {
@@ -132,6 +254,7 @@ static void init_cmd_options(cmd_options_t* cmd)
 	cmd->QP_AC = 0;
 	cmd->intra_period = 0;
 	cmd->multi_thread_mode = 0;
+	memset(cmd->entropy_coder, 0, sizeof(char)*128);
 }
 
 // parse command and extract cfg options
@@ -183,6 +306,15 @@ static int parsing_command(int argc, char *argv[], cmd_options_t *cmd)
 				{
 					memcpy(cmd->yuv_fname, argv[i+1], sizeof(char)*256);
 				}
+				else if (option[1] == 'e')
+				{
+					memcpy(cmd->entropy_coder, argv[i+1], sizeof(char)*128);
+					if(strcmp(cmd->entropy_coder,"original") != 0 && 
+						strcmp(cmd->entropy_coder,"abac") != 0 && 
+						strcmp(cmd->entropy_coder,"huffman") != 0 &&
+						strcmp(cmd->entropy_coder,"cabac") != 0)
+						sprintf(cmd->entropy_coder,"original");
+				}
 				else if (option[1] == 'n')
 				{
 					cmd->total_frames = atoi(argv[i+1]);
@@ -204,7 +336,8 @@ static int parsing_command(int argc, char *argv[], cmd_options_t *cmd)
 			}
 		}
 	}
-
+	if(strcmp(cmd->entropy_coder,"") == 0) sprintf(cmd->entropy_coder,"original");
+	printf("Testing e arg: %s\n",cmd->entropy_coder);
 	return SUCCESS;
 }
 void set_command_options(int argc, char *argv[], cmd_options_t *cmd)
@@ -258,8 +391,17 @@ void* encoding_thread(void* arg)
 
 
 // single-thread function
-void single_thread_encoding(FrameData* frames, YCbCr_t* YCbCr,char* fname, int intra_period, int QstepDC, int QstepAC, Statistics *stats)
+void single_thread_encoding(FrameData* frames, YCbCr_t* YCbCr,char* fname, int intra_period, int QstepDC, int QstepAC,char* entropyCoder, Statistics *stats)
 {
+	/*Use of global EntropyCoder var*/
+	if(strcmp(entropyCoder,"original") == 0) EC = EntropyCoding::Original;
+	else if(strcmp(entropyCoder,"abac") == 0) EC = EntropyCoding::Abac;
+	else if(strcmp(entropyCoder,"huffman") == 0) EC = EntropyCoding::Huffman;
+	else {
+		EC = EntropyCoding::Cabac;
+		x264_cabac_init();
+	} 
+
 	if( intra_period==ALL_INTRA )
 	{
 		allintraPrediction(frames, YCbCr->nframe, QstepDC, QstepAC);
@@ -354,6 +496,8 @@ int splitFrames(IcspCodec &icC)
 
 	return 0;
 }
+// \param blocksize1 Y blocks, typically 16x16
+// \param blocksize2 UV blocks, typically 8x8
 int splitBlocks(IcspCodec &icC, int blocksize1, int blocksize2)
 {
 	int width  = icC.YCbCr.width;
@@ -377,10 +521,12 @@ int splitBlocks(IcspCodec &icC, int blocksize1, int blocksize2)
 		return -1;
 	}
 
-	//blocksize1xblocksize1�� blocksize2xblocksize2�� �ɰ� Ƚ��
+	// Number of block2 inside a block1
 	int nblock2Ofblock1 = (int) (blocksize1*blocksize1) / (blocksize2*blocksize2);
 
 
+	// We divide by 2 because we’re in YUV 4:2:0, so for every square of 4 pixels
+	// we store 1 value of Cb and 1 value of Cr, while having 4 of Y
 	int CbCrSplitWidth  = (icC.YCbCr.width  / 2) / blocksize2;
 	int CbCrSplitHeight = (icC.YCbCr.height / 2) / blocksize2;
 	int CbCrWidth  = (icC.YCbCr.width   / 2);
@@ -389,7 +535,7 @@ int splitBlocks(IcspCodec &icC, int blocksize1, int blocksize2)
 	int cntx=0, cnty=0;
 	for(int numframe=0; numframe<nframe; numframe++)
 	{
-		/*frames �ȿ� �ִ� blocks �ʱ�ȭ*/
+		// Number of macro-blocks, of size 16x16
 		icC.frames[numframe].blocks = (BlockData *) malloc(sizeof(BlockData)*splitWidth*splitHeight);	// �Ҹ��ڿ��� ��ȯ�����
 		if(icC.frames[numframe].blocks == NULL)
 		{
@@ -398,14 +544,16 @@ int splitBlocks(IcspCodec &icC, int blocksize1, int blocksize2)
 		}
 
 		FrameData &frm = icC.frames[numframe];
-		// Y frames
+		// Y frames, fill with original values
 		for(int numblock=0; numblock<totalblck; numblock++)
 		{
 			BlockData &bd = icC.frames[numframe].blocks[numblock];			
 
+			// Index of upper left pixel of the current block
 			cntx=(numblock%splitWidth)*blocksize1;
 			cnty=(numblock/splitWidth)*blocksize1;
-			// 16x16 ����ȭ	
+
+			// Fill with Y values of 16x16 block
 			bd.originalblck16 = (Block16u*) malloc(sizeof(Block16u));
 			for(int y=0; y<blocksize1; y++)
 			{
@@ -416,11 +564,13 @@ int splitBlocks(IcspCodec &icC, int blocksize1, int blocksize2)
 				}				
 			}
 
-			// 8x8 ����ȭ
+			// Allocate ptrs and blocks for 8x8 blocks
 			bd.originalblck8 = (Block8u**)malloc(sizeof(Block8u*)*nblock2Ofblock1);
 			for(int i=0; i<nblock2Ofblock1; i++)
 				bd.originalblck8[i] = (Block8u*)malloc(sizeof(Block8u));
 
+			// The same data is essentially stored as in the 16x16 blocks, but
+			// in 4 smaller blocks of 8x8. Still only the Y values
 			for(int k=0; k<nblock2Ofblock1; k++)
 			{
 				for(int i=0; i<blocksize2; i++)
@@ -442,6 +592,7 @@ int splitBlocks(IcspCodec &icC, int blocksize1, int blocksize2)
 			bd.blocksize1 = blocksize1;
 			bd.blocksize2 = blocksize2;
 		}
+
 		frm.nblocks16   = splitWidth*splitHeight;	// nblockxx �ɹ��� FrameData���� �ٸ� ����ü�� �ٲ��� ��ġ ����
 		frm.nblocks8    = nblock2Ofblock1;
 		frm.splitWidth  = splitWidth;
@@ -4896,9 +5047,12 @@ void makebitstream(FrameData* frames, int nframes, int height, int width, int Qs
 {
 	/* header */
 	header hd;
+	// std::cout << (EC == EntropyCoding::Original ? "OG" : "Not OG") << std::endl;
+	// std::cout << (EC == EntropyCoding::Cabac ? "CABAC" : "Not CABAC") << std::endl;
+	// std::cout << (EC == EntropyCoding::Huffman ? "HF" : "Not HF") << std::endl;
 	headerinit(hd, height, width, QstepDC, QstepAC, intraPeriod);
 	char compCIFfname[256];
-	sprintf(compCIFfname, "%s/%s_compCIF_%d_%d_%d.bin", resultDirectory, filename, QstepDC, QstepAC, intraPeriod);
+	sprintf(compCIFfname, "%s/%s_compCIF_%d_%d_%d_%d.bin", resultDirectory, filename, QstepDC, QstepAC, intraPeriod,static_cast<int>(EC));
 	#pragma pack(push, 1)
 	FILE* fp = fopen(compCIFfname, "wb");
 	if(fp==NULL)
@@ -4908,17 +5062,26 @@ void makebitstream(FrameData* frames, int nframes, int height, int width, int Qs
 	}
 	fwrite(&hd, sizeof(header), 1, fp);
 	#pragma pack(pop)
+
+	// We have one coder for each as they will likely have different values
+	evx::entropy_coder dcCoder {};
+	evx::entropy_coder acCoder {};
+	evx::entropy_coder mvCoder {};
 	
 	/* body */
 	if(predmode==INTRA)
 	{
-		allintraBody(frames, nframes, fp, stats);
+		if (EC == EntropyCoding::Cabac) allintraBodyCabac(frames,nframes,QstepDC,fp,stats);
+		else allintraBody(frames, nframes, fp, dcCoder, acCoder, stats);
 	}
 	else if(predmode==INTER)
 	{
 		int cntbits = 0;
-		int maxbits = frames->splitHeight * frames->splitWidth * frames->blocks->blocksize1 * frames->blocks->blocksize1 * 8 * nframes;
+		// Size of 8 bits (1 byte) for every pixel
+		int maxbits = frames->splitHeight * frames->splitWidth * frames->blocks->blocksize1 * frames->blocks->blocksize1 * 8 * nframes * 8;
+		// Allocate this number in bytes
 		unsigned char* tempFrame = (unsigned char*)malloc(sizeof(unsigned char)*(maxbits/8));
+		uint8_t* tempFrameEnd = tempFrame + (maxbits/8);
 		if(tempFrame==NULL)
 		{
 			cout << "fail to allocate memory in makebitstream" << endl;
@@ -4927,18 +5090,38 @@ void makebitstream(FrameData* frames, int nframes, int height, int width, int Qs
 
 		for(int n=0; n<nframes; n++)
 		{
+			x264_cabac_t cb;
+			if (EC == EntropyCoding::Cabac){
+				int slice_type = (n % intraPeriod == 0) ? SLICE_TYPE_I : SLICE_TYPE_P;
+				x264_cabac_context_init(&cb, slice_type, QstepDC, 0);
+        		x264_cabac_encode_init(&cb, tempFrame, tempFrameEnd);
+			}
 			if(n%intraPeriod==0)
 			{
-				intraBody(frames[n], tempFrame, cntbits, stats);
-				//cout << "intra frame bits: " << cntbits << endl;
+				if (EC == EntropyCoding::Cabac) intraBodyCabac(frames[n], tempFrame, cntbits, cb, stats);
+				else intraBody(frames[n], tempFrame, cntbits, dcCoder, acCoder, stats);
+				// cout << "intra frame bits: " << cntbits << endl;
 			}
 			else
 			{
-				interBody(frames[n], tempFrame, cntbits, stats);
-				//cout << "inter frame bits: " << cntbits << endl;				
+				if(EC == EntropyCoding::Cabac) interBodyCabac(frames[n], tempFrame, cntbits,cb, stats);
+				else interBody(frames[n], tempFrame, cntbits, dcCoder, acCoder, mvCoder, stats);
+				// cout << "inter frame bits: " << cntbits << endl;				
+			}
+
+			if (EC == EntropyCoding::Cabac){
+				// Terminate & flush CABAC
+        		x264_cabac_encode_terminal(&cb);
+        		x264_cabac_encode_flush(n, &cb);
+        		// write out this frame's bitstream
+        		size_t payload = cb.p - cb.p_start;
+        		fwrite(cb.p_start, 1, payload, fp);
+        		if (stats)
+        		    stats->totalEntropyBits[frames[n].numOfFrame] = payload * 8;
 			}
 		}
-		fwrite(tempFrame, (cntbits/8)+1, 1, fp);
+		if (EC != EntropyCoding::Cabac)
+			fwrite(tempFrame, (cntbits/8)+1, 1, fp);
 		free(tempFrame);
 	}
 	
@@ -4966,12 +5149,126 @@ void headerinit(header& hd, int height, int width, int QstepDC, int QstepAC, int
 		(hd.outro <<= 1) |= 0;	// last bits = 0;
 	}
 }
-void allintraBody(FrameData* frames, int nframes, FILE* fp, Statistics *stats)
+
+void allintraBodyCabac(FrameData* frames, int nframes, int QstepDC, FILE* fp, Statistics *stats) {
+    int totalblck = frames->nblocks16;
+    int nblock8   = frames->nblocks8;
+    int maxbytes  = frames->splitHeight * frames->splitWidth * frames->blocks->blocksize1 *
+                    frames->blocks->blocksize1 * 8 * nframes * 2; // estimate in bytes
+
+    // Allocate output buffer
+    uint8_t* frame = (uint8_t*)malloc(sizeof(uint8_t) * maxbytes);
+    if (frame == NULL) {
+        std::cerr << "Failed to allocate memory for CABAC output.\n";
+        exit(-1);
+    }
+    uint8_t* frameEnd = frame + maxbytes;
+
+    for (int nfrm = 0; nfrm < nframes; nfrm++) {
+        x264_cabac_t cb;
+        x264_cabac_context_init(&cb, SLICE_TYPE_I, QstepDC, 0);
+        x264_cabac_encode_init(&cb, frame, frameEnd);
+
+        for (int nblck16 = 0; nblck16 < totalblck; nblck16++) {
+            BlockData& bd = frames[nfrm].blocks[nblck16];
+            for (int nblck8 = 0; nblck8 < nblock8; nblck8++) {
+                x264_cabac_encode_decision(&cb, CTX_MPM_FLAG, bd.MPMFlag[nblck8]);
+                x264_cabac_encode_decision(&cb, CTX_INTRA_PRED, bd.intraPredMode[nblck8]);
+				int pos0 = x264_cabac_pos(&cb);
+                int dc = bd.intraReorderedblck8[nblck8][0];
+                x264_cabac_encode_decision(&cb, CTX_IDX_DC, dc != 0);
+                if (dc) {
+                    x264_cabac_encode_ue_bypass(&cb, 0, abs(dc));
+                    x264_cabac_encode_bypass(&cb, dc < 0);
+                }
+
+                if (stats)
+                    stats->totalDcBits[frames[nfrm].numOfFrame] += x264_cabac_pos(&cb) - pos0;
+
+                pos0 = x264_cabac_pos(&cb); 
+                x264_cabac_encode_decision(&cb, CTX_AC_PRESENT, !bd.intraACflag[nblck8]);
+
+                if (bd.intraACflag[nblck8] == 1) {
+                    for (int i = 0; i < 63; i++)
+                        x264_cabac_encode_decision(&cb, CTX_IDX_AC_START + i, 0);
+                } else {
+                    for (int i = 0; i < 63; i++) {
+                        int16_t c = bd.intraReorderedblck8[nblck8][i + 1];
+                        int nz = (c != 0);
+                        x264_cabac_encode_decision(&cb, CTX_IDX_AC_START + i, nz);
+                        if (nz) {
+                            x264_cabac_encode_ue_bypass(&cb, 0, abs(c));
+                            x264_cabac_encode_bypass(&cb, c < 0);
+                        }
+                    }
+                }
+
+                if (stats)
+                    stats->totalAcBits[frames[nfrm].numOfFrame] += x264_cabac_pos(&cb) - pos0;
+            }
+
+            // Cb/Cr processing
+            CBlockData& cbbd = frames[nfrm].Cbblocks[nblck16];
+            CBlockData& crbd = frames[nfrm].Crblocks[nblck16];
+
+            for (int plane = 0; plane < 2; plane++) {
+                CBlockData& cbd = (plane == 0) ? cbbd : crbd;
+
+                int pos0 = x264_cabac_pos(&cb);
+                int dc = cbd.intraReorderedblck[0];
+                x264_cabac_encode_decision(&cb, CTX_IDX_DC, dc != 0);
+                if (dc) {
+                    x264_cabac_encode_ue_bypass(&cb, 0, abs(dc));
+                    x264_cabac_encode_bypass(&cb, dc < 0);
+                }
+
+                if (stats)
+                    stats->totalDcBits[frames[nfrm].numOfFrame] += x264_cabac_pos(&cb) - pos0;
+
+                pos0 = x264_cabac_pos(&cb);
+                x264_cabac_encode_decision(&cb, CTX_AC_PRESENT, !cbd.intraACflag);
+
+                if (cbd.intraACflag == 1) {
+                    for (int i = 0; i < 63; i++)
+                        x264_cabac_encode_decision(&cb, CTX_IDX_AC_START + i, 0);
+                } else {
+                    for (int i = 0; i < 63; i++) {
+                        int16_t c = cbd.intraReorderedblck[i + 1];
+                        int nz = (c != 0);
+                        x264_cabac_encode_decision(&cb, CTX_IDX_AC_START + i, nz);
+                        if (nz) {
+                            x264_cabac_encode_ue_bypass(&cb, 0, abs(c));
+                            x264_cabac_encode_bypass(&cb, c < 0);
+                        }
+                    }
+                }
+
+                if (stats)
+                    stats->totalAcBits[frames[nfrm].numOfFrame] += x264_cabac_pos(&cb) - pos0;
+            }
+        }
+
+        // Finalize CABAC encoding for this frame
+        x264_cabac_encode_terminal(&cb);
+        x264_cabac_encode_flush(nfrm, &cb);
+
+        // Calculate size of encoded data
+        size_t payload_size = cb.p - cb.p_start;
+        fwrite(cb.p_start, 1, payload_size, fp);
+
+        if (stats)
+            stats->totalEntropyBits[frames[nfrm].numOfFrame] = payload_size * 8;
+    }
+
+    free(frame);
+}
+
+void allintraBody(FrameData* frames, int nframes, FILE* fp, evx::entropy_coder& dcCoder, evx::entropy_coder& acCoder, Statistics *stats)
 {
 	int totalblck = frames->nblocks16;
 	int nblock8   = frames->nblocks8;
 	int idx       = 0;
-	int maxbits   = frames->splitHeight * frames->splitWidth * frames->blocks->blocksize1 * frames->blocks->blocksize1 * 8 * nframes; // Y ä�θ� ����
+	int maxbits   = frames->splitHeight * frames->splitWidth * frames->blocks->blocksize1 * frames->blocks->blocksize1 * 8 * nframes * 6; // Y ä�θ� ����
 	
 	int cntbits   = 0;
 	int DCbits    = 0;
@@ -5001,13 +5298,19 @@ void allintraBody(FrameData* frames, int nframes, FILE* fp, Statistics *stats)
 
 				(frame[cntbits++/8]<<=1) |= bd.MPMFlag[nblck8]; // mpmflag 1bit				
 				(frame[cntbits++/8]<<=1) |= bd.intraPredMode[nblck8]; // intra prediction flag 1bit				
-				DCResult = DCentropy(bd.intraReorderedblck8[nblck8][0], DCbits); // DC entropy result ?bits; one value
+
+				DCResult = DCentropy(bd.intraReorderedblck8[nblck8][0], DCbits, dcCoder, stats); // DC entropy result ?bits; one value
+				// for(int n=0; n<DCbits; n++)
+				// 	(frame[cntbits++/8]<<=1) |= DCResult[n];
+				// free(DCResult);
+				// DCResult = dcCabacEntropy(bd.intraReorderedblck8[nblck8][0], DCbits, dcCoder, stats); // DC entropy result ?bits; one value
 				for(int n=0; n<DCbits; n++)
 					(frame[cntbits++/8]<<=1) |= DCResult[n];
 				free(DCResult);
 
-				if (stats)
+				if (stats) {
 					stats->totalDcBits[frames[nfrm].numOfFrame] += DCbits;
+				}
 								
 				(frame[cntbits++/8]<<=1) |= bd.intraACflag[nblck8]; // acflag 1bit
 				
@@ -5021,14 +5324,18 @@ void allintraBody(FrameData* frames, int nframes, FILE* fp, Statistics *stats)
 				}
 				else
 				{
-					ACResult = ACentropy(bd.intraReorderedblck8[nblck8], ACbits); // AC entropy result ?bits; 63 values
+					// ACResult = ACentropy(bd.intraReorderedblck8[nblck8], ACbits, stats); // AC entropy result ?bits; 63 values
+					// for(int n=0; n<ACbits; n++)
+					// 	(frame[cntbits++/8]<<=1) |= ACResult[n];
+					// free(ACResult);
+					ACResult = ACentropy(bd.intraReorderedblck8[nblck8], ACbits, acCoder, stats); // AC entropy result ?bits; 63 values
 					for(int n=0; n<ACbits; n++)
 						(frame[cntbits++/8]<<=1) |= ACResult[n];
-				
 					free(ACResult);
 
-					if (stats)
+					if (stats) {
 						stats->totalAcBits[frames[nfrm].numOfFrame] += ACbits;
+					}
 				}
 			}
 			// Cb Cr 8x8 ����
@@ -5038,13 +5345,18 @@ void allintraBody(FrameData* frames, int nframes, FILE* fp, Statistics *stats)
 			DCbits = 0;
 			ACbits = 0;
 
-			DCResult = DCentropy(cbbd.intraReorderedblck[0], DCbits); // DC entropy result ?bits; one value
+			// DCResult = DCentropy(cbbd.intraReorderedblck[0], DCbits, stats); // DC entropy result ?bits; one value
+			// for(int n=0; n<DCbits; n++)
+			// 	(frame[cntbits++/8]<<=1) |= DCResult[n];
+			// free(DCResult);
+			DCResult = DCentropy(cbbd.intraReorderedblck[0], DCbits, dcCoder, stats); // DC entropy result ?bits; one value
 			for(int n=0; n<DCbits; n++)
 				(frame[cntbits++/8]<<=1) |= DCResult[n];
 			free(DCResult);
 
-			if (stats)
+			if (stats) {
 				stats->totalDcBits[frames[nfrm].numOfFrame] += DCbits;
+			}
 
 			(frame[cntbits++/8]<<=1) |= cbbd.intraACflag; // acflag 1bit
 
@@ -5058,25 +5370,34 @@ void allintraBody(FrameData* frames, int nframes, FILE* fp, Statistics *stats)
 			}
 			else
 			{
-				ACResult = ACentropy(cbbd.intraReorderedblck, ACbits); // AC entropy result ?bits; 63 values
+				// ACResult = ACentropy(cbbd.intraReorderedblck, ACbits, stats); // AC entropy result ?bits; 63 values
+				// for(int n=0; n<ACbits; n++)
+				// 	(frame[cntbits++/8]<<=1) |= ACResult[n];
+				// free(ACResult);
+				ACResult = ACentropy(cbbd.intraReorderedblck, ACbits, acCoder, stats); // AC entropy result ?bits; 63 values
 				for(int n=0; n<ACbits; n++)
 					(frame[cntbits++/8]<<=1) |= ACResult[n];
-			
 				free(ACResult);
 
-				if (stats)
+				if (stats) {
 					stats->totalAcBits[frames[nfrm].numOfFrame] += ACbits;
+				}
 			}
 			DCbits = 0;
 			ACbits = 0;
 
-			DCResult = DCentropy(crbd.intraReorderedblck[0], DCbits); // DC entropy result ?bits; one value
+			// DCResult = DCentropy(crbd.intraReorderedblck[0], DCbits, stats); // DC entropy result ?bits; one value
+			// for(int n=0; n<DCbits; n++)
+			// 	(frame[cntbits++/8]<<=1) |= DCResult[n];
+			// free(DCResult);
+			DCResult = DCentropy(crbd.intraReorderedblck[0], DCbits, dcCoder, stats); // DC entropy result ?bits; one value
 			for(int n=0; n<DCbits; n++)
 				(frame[cntbits++/8]<<=1) |= DCResult[n];
 			free(DCResult);
 
-			if (stats)
+			if (stats) {
 				stats->totalDcBits[frames[nfrm].numOfFrame] += DCbits;
+			}
 
 			(frame[cntbits++/8]<<=1) |= crbd.intraACflag; // acflag 1bit
 			if(crbd.intraACflag==1)
@@ -5089,13 +5410,18 @@ void allintraBody(FrameData* frames, int nframes, FILE* fp, Statistics *stats)
 			}
 			else
 			{
-				ACResult = ACentropy(crbd.intraReorderedblck, ACbits); // AC entropy result ?bits; 63 values
+				// ACResult = ACentropy(crbd.intraReorderedblck, ACbits, stats); // AC entropy result ?bits; 63 values
+				// for(int n=0; n<ACbits; n++)
+				// 	(frame[cntbits++/8]<<=1) |= ACResult[n];
+				// free(ACResult);
+				ACResult = ACentropy(crbd.intraReorderedblck, ACbits, acCoder, stats); // AC entropy result ?bits; 63 values
 				for(int n=0; n<ACbits; n++)
 					(frame[cntbits++/8]<<=1) |= ACResult[n];
 				free(ACResult);
 
-				if (stats)
+				if (stats) {
 					stats->totalAcBits[frames[nfrm].numOfFrame] += ACbits;
+				}
 			}
 		}	
 		if (stats) {
@@ -5104,10 +5430,103 @@ void allintraBody(FrameData* frames, int nframes, FILE* fp, Statistics *stats)
 			stats->totalEntropyBits[i] = stats->totalAcBits[i] + stats->totalDcBits[i];
 		}
 	}
+	dcCoder.clear();
+	acCoder.clear();
 	fwrite(frame, (cntbits/8)+1, 1, fp); 
 	free(frame);
 }
-void intraBody(FrameData& frm, unsigned char* tempFrame, int& cntbits, Statistics *stats)
+
+void intraBodyCabac(FrameData& frm, unsigned char* tempFrame, int& cntbits,x264_cabac_t& cb, Statistics *stats) {
+	int totalblck = frm.nblocks16;
+	int nblock8   = frm.nblocks8;
+	int idx       = 0;
+	int DCbits    = 0;
+	int ACbits    = 0;
+	int bytbits   = 0;
+
+	unsigned char* DCResult = NULL;
+	unsigned char* ACResult = NULL;
+	for (int nblck16 = 0; nblck16 < totalblck; nblck16++) {
+            BlockData& bd = frm.blocks[nblck16];
+            for (int nblck8 = 0; nblck8 < nblock8; nblck8++) {
+                x264_cabac_encode_decision(&cb, CTX_MPM_FLAG, bd.MPMFlag[nblck8]);
+                x264_cabac_encode_decision(&cb, CTX_INTRA_PRED, bd.intraPredMode[nblck8]);
+				int pos0 = x264_cabac_pos(&cb);
+                int dc = bd.intraReorderedblck8[nblck8][0];
+                x264_cabac_encode_decision(&cb, CTX_IDX_DC, dc != 0);
+                if (dc) {
+                    x264_cabac_encode_ue_bypass(&cb, 0, abs(dc));
+                    x264_cabac_encode_bypass(&cb, dc < 0);
+                }
+
+                if (stats)
+                    stats->totalDcBits[frm.numOfFrame] += x264_cabac_pos(&cb) - pos0;
+
+                pos0 = x264_cabac_pos(&cb);
+                x264_cabac_encode_decision(&cb, CTX_AC_PRESENT, !bd.intraACflag[nblck8]);
+
+                if (bd.intraACflag[nblck8] == 1) {
+                    for (int i = 0; i < 63; i++)
+                        x264_cabac_encode_decision(&cb, CTX_IDX_AC_START + i, 0);
+                } else {
+                    for (int i = 0; i < 63; i++) {
+                        int16_t c = bd.intraReorderedblck8[nblck8][i + 1];
+                        int nz = (c != 0);
+                        x264_cabac_encode_decision(&cb, CTX_IDX_AC_START + i, nz);
+                        if (nz) {
+                            x264_cabac_encode_ue_bypass(&cb, 0, abs(c));
+                            x264_cabac_encode_bypass(&cb, c < 0);
+                        }
+                    }
+                }
+
+                if (stats)
+                    stats->totalAcBits[frm.numOfFrame] += x264_cabac_pos(&cb) - pos0;
+            }
+
+            // Cb/Cr processing
+            CBlockData& cbbd = frm.Cbblocks[nblck16];
+            CBlockData& crbd = frm.Crblocks[nblck16];
+
+            for (int plane = 0; plane < 2; plane++) {
+                CBlockData& cbd = (plane == 0) ? cbbd : crbd;
+
+                int pos0 = x264_cabac_pos(&cb);
+                int dc = cbd.intraReorderedblck[0];
+                x264_cabac_encode_decision(&cb, CTX_IDX_DC, dc != 0);
+                if (dc) {
+                    x264_cabac_encode_ue_bypass(&cb, 0, abs(dc));
+                    x264_cabac_encode_bypass(&cb, dc < 0);
+                }
+
+                if (stats)
+                    stats->totalDcBits[frm.numOfFrame] += x264_cabac_pos(&cb) - pos0;
+
+                pos0 = x264_cabac_pos(&cb);
+                x264_cabac_encode_decision(&cb, CTX_AC_PRESENT, !cbd.intraACflag);
+
+                if (cbd.intraACflag == 1) {
+                    for (int i = 0; i < 63; i++)
+                        x264_cabac_encode_decision(&cb, CTX_IDX_AC_START + i, 0);
+                } else {
+                    for (int i = 0; i < 63; i++) {
+                        int16_t c = cbd.intraReorderedblck[i + 1];
+                        int nz = (c != 0);
+                        x264_cabac_encode_decision(&cb, CTX_IDX_AC_START + i, nz);
+                        if (nz) {
+                            x264_cabac_encode_ue_bypass(&cb, 0, abs(c));
+                            x264_cabac_encode_bypass(&cb, c < 0);
+                        }
+                    }
+                }
+
+                if (stats)
+                    stats->totalAcBits[frm.numOfFrame] += x264_cabac_pos(&cb) - pos0;
+            }
+        }
+}
+
+void intraBody(FrameData& frm, unsigned char* tempFrame, int& cntbits, evx::entropy_coder& dcCoder, evx::entropy_coder& acCoder, Statistics *stats)
 {
 	int totalblck = frm.nblocks16;
 	int nblock8   = frm.nblocks8;
@@ -5119,6 +5538,14 @@ void intraBody(FrameData& frm, unsigned char* tempFrame, int& cntbits, Statistic
 
 	unsigned char* DCResult = NULL;
 	unsigned char* ACResult = NULL;
+
+	// Note: when addressing with `cntbits`, it is always divided by 8 because
+	// we’re writing in a byte array (or unsigned char array) and so we’re
+  // addressing the bytes, not the bits.
+  //
+  // By the nature of integer division, when one byte is fully written to,
+  // the next is automatically addressed next time:
+  //   frm[cntbits++/8] |= 0
 	
 	//cntbits = 0;
 	//cout << "intra frame bits: " << cntbits << endl;
@@ -5135,13 +5562,18 @@ void intraBody(FrameData& frm, unsigned char* tempFrame, int& cntbits, Statistic
 			(tempFrame[cntbits++/8]<<=1) |= bd.MPMFlag[nblck8];				 // mpmflag 1bit				
 			(tempFrame[cntbits++/8]<<=1) |= bd.intraPredMode[nblck8];		 // intra prediction flag 1bit				
 
-			DCResult = DCentropy(bd.intraReorderedblck8[nblck8][0], DCbits); // DC entropy result ?bits; one value
+			// DCResult = DCentropy(bd.intraReorderedblck8[nblck8][0], DCbits, stats); // DC entropy result ?bits; one value
+			// for(int n=0; n<DCbits; n++)
+			// 	(tempFrame[cntbits++/8]<<=1) |= DCResult[n];
+			// free(DCResult);
+			DCResult = DCentropy(bd.intraReorderedblck8[nblck8][0], DCbits, dcCoder, stats); // DC entropy result ?bits; one value
 			for(int n=0; n<DCbits; n++)
 				(tempFrame[cntbits++/8]<<=1) |= DCResult[n];
 			free(DCResult);
 
-			if (stats)
+			if (stats) {
 				stats->totalDcBits[frm.numOfFrame] += DCbits;
+			}
 
 			(tempFrame[cntbits++/8]<<=1) |= bd.intraACflag[nblck8];		  // acflag 1bit
 			if(bd.intraACflag[nblck8]==1)
@@ -5154,13 +5586,18 @@ void intraBody(FrameData& frm, unsigned char* tempFrame, int& cntbits, Statistic
 			}
 			else
 			{
-				ACResult = ACentropy(bd.intraReorderedblck8[nblck8], ACbits); // AC entropy result ?bits; 63 values
+				// ACResult = ACentropy(bd.intraReorderedblck8[nblck8], ACbits, stats); // AC entropy result ?bits; 63 values
+				// for(int n=0; n<ACbits; n++)
+				// 	(tempFrame[cntbits++/8]<<=1) |= ACResult[n];
+				// free(ACResult);
+				ACResult = ACentropy(bd.intraReorderedblck8[nblck8], ACbits, acCoder, stats); // AC entropy result ?bits; 63 values
 				for(int n=0; n<ACbits; n++)
 					(tempFrame[cntbits++/8]<<=1) |= ACResult[n];
 				free(ACResult);
 
-				if (stats)
+				if (stats) {
 					stats->totalAcBits[frm.numOfFrame] += ACbits;
+				}
 			}
 
 		}
@@ -5171,13 +5608,18 @@ void intraBody(FrameData& frm, unsigned char* tempFrame, int& cntbits, Statistic
 		DCbits = 0;
 		ACbits = 0;
 
-		DCResult = DCentropy(cbbd.intraReorderedblck[0], DCbits);		 // DC entropy result ?bits; one value
+		// DCResult = DCentropy(cbbd.intraReorderedblck[0], DCbits, stats);		 // DC entropy result ?bits; one value
+		// for(int n=0; n<DCbits; n++)
+		// 	(tempFrame[cntbits++/8]<<=1) |= DCResult[n];
+		// free(DCResult);
+		DCResult = DCentropy(cbbd.intraReorderedblck[0], DCbits, dcCoder, stats);		 // DC entropy result ?bits; one value
 		for(int n=0; n<DCbits; n++)
 			(tempFrame[cntbits++/8]<<=1) |= DCResult[n];
 		free(DCResult);
 
-		if (stats)
+		if (stats) {
 			stats->totalDcBits[frm.numOfFrame] += DCbits;
+		}
 
 		(tempFrame[cntbits++/8]<<=1) |= cbbd.intraACflag;	   // acflag 1bit
 		if(cbbd.intraACflag==1)
@@ -5190,25 +5632,35 @@ void intraBody(FrameData& frm, unsigned char* tempFrame, int& cntbits, Statistic
 		}
 		else
 		{
-			ACResult = ACentropy(cbbd.intraReorderedblck, ACbits); // AC entropy result ?bits; 63 values
+			// ACResult = ACentropy(cbbd.intraReorderedblck, ACbits, stats); // AC entropy result ?bits; 63 values
+			// for(int n=0; n<ACbits; n++)
+			// 	(tempFrame[cntbits++/8]<<=1) |= ACResult[n];
+			// free(ACResult);
+			ACResult = ACentropy(cbbd.intraReorderedblck, ACbits, acCoder, stats); // AC entropy result ?bits; 63 values
 			for(int n=0; n<ACbits; n++)
 				(tempFrame[cntbits++/8]<<=1) |= ACResult[n];
 			free(ACResult);
 
-			if (stats)
+			if (stats) {
 				stats->totalAcBits[frm.numOfFrame] += ACbits;
+			}
 		}
 
 		DCbits = 0;
 		ACbits = 0;
 
-		DCResult = DCentropy(crbd.intraReorderedblck[0], DCbits); // DC entropy result ?bits; one value
+		// DCResult = DCentropy(crbd.intraReorderedblck[0], DCbits, stats); // DC entropy result ?bits; one value
+		// for(int n=0; n<DCbits; n++)
+		// 	(tempFrame[cntbits++/8]<<=1) |= DCResult[n];
+		// free(DCResult);
+		DCResult = DCentropy(crbd.intraReorderedblck[0], DCbits, dcCoder, stats); // DC entropy result ?bits; one value
 		for(int n=0; n<DCbits; n++)
 			(tempFrame[cntbits++/8]<<=1) |= DCResult[n];
 		free(DCResult);
 
-		if (stats)
+		if (stats) {
 			stats->totalDcBits[frm.numOfFrame] += DCbits;
+		}
 
 		(tempFrame[cntbits++/8]<<=1) |= crbd.intraACflag; // acflag 1bit
 		if(crbd.intraACflag==1)
@@ -5221,13 +5673,18 @@ void intraBody(FrameData& frm, unsigned char* tempFrame, int& cntbits, Statistic
 		}
 		else
 		{
-			ACResult = ACentropy(crbd.intraReorderedblck, ACbits); // AC entropy result ?bits; 63 values
+			// ACResult = ACentropy(crbd.intraReorderedblck, ACbits, stats); // AC entropy result ?bits; 63 values
+			// for(int n=0; n<ACbits; n++)
+			// 	(tempFrame[cntbits++/8]<<=1) |= ACResult[n];
+			// free(ACResult);
+			ACResult = ACentropy(crbd.intraReorderedblck, ACbits, acCoder, stats); // AC entropy result ?bits; 63 values
 			for(int n=0; n<ACbits; n++)
 				(tempFrame[cntbits++/8]<<=1) |= ACResult[n];
 			free(ACResult);
 
-			if (stats)
+			if (stats) {
 				stats->totalAcBits[frm.numOfFrame] += ACbits;
+			}
 		}
 	}
 	if (stats) {
@@ -5235,8 +5692,117 @@ void intraBody(FrameData& frm, unsigned char* tempFrame, int& cntbits, Statistic
 		// We do not have MV bits here as it’s an intra frame
 		stats->totalEntropyBits[i] = stats->totalAcBits[i] + stats->totalDcBits[i];
 	}
+	dcCoder.clear();
+	acCoder.clear();
 }
-void interBody(FrameData& frm, unsigned char* tempFrame, int& cntbits, Statistics *stats)
+
+void interBodyCabac(FrameData& frm, unsigned char* tempFrame, int& cntbits,x264_cabac_t& cb, Statistics *stats) {
+	int totalblck = frm.nblocks16;
+	int nblock8   = frm.nblocks8;
+	int idx       = 0;
+	
+	int DCbits    = 0;
+	int ACbits    = 0;
+	int bytbits   = 0;
+	int xMVbits   = 0;
+	int yMVbits   = 0;
+	
+	unsigned char* DCResult = NULL;
+	unsigned char* ACResult = NULL;
+	unsigned char* MVResult = NULL;
+	for (int nblck16 = 0; nblck16 < totalblck; nblck16++) {
+            BlockData& bd = frm.blocks[nblck16];
+			// has MV?
+        	x264_cabac_encode_decision(&cb, CTX_MV_FLAG,  1);
+			//X
+			int pos0 = x264_cabac_pos(&cb);
+			int mvx = bd.mv.x;  // signed delta
+        	x264_cabac_encode_ue_bypass(&cb, 0, abs(mvx));
+        	x264_cabac_encode_bypass(&cb, mvx < 0);
+			//Y
+        	int mvy = bd.mv.y;
+        	x264_cabac_encode_ue_bypass(&cb, 0, abs(mvy));
+        	x264_cabac_encode_bypass   (&cb, mvy < 0);
+        	if (stats) stats->totalMvBits[frm.numOfFrame] += x264_cabac_pos(&cb) - pos0;
+            for (int nblck8 = 0; nblck8 < nblock8; nblck8++) {
+                x264_cabac_encode_decision(&cb, CTX_MPM_FLAG, bd.MPMFlag[nblck8]);
+                x264_cabac_encode_decision(&cb, CTX_INTRA_PRED, bd.intraPredMode[nblck8]);
+				pos0 = x264_cabac_pos(&cb);
+                int dc = bd.interReorderedblck8[nblck8][0];
+                x264_cabac_encode_decision(&cb, CTX_IDX_DC, dc != 0);
+                if (dc) {
+                    x264_cabac_encode_ue_bypass(&cb, 0, abs(dc));
+                    x264_cabac_encode_bypass(&cb, dc < 0);
+                }
+
+                if (stats)
+                    stats->totalDcBits[frm.numOfFrame] += x264_cabac_pos(&cb) - pos0;
+
+                pos0 = x264_cabac_pos(&cb);
+                x264_cabac_encode_decision(&cb, CTX_AC_PRESENT, !bd.intraACflag[nblck8]);
+
+                if (bd.intraACflag[nblck8] == 1) {
+                    for (int i = 0; i < 63; i++)
+                        x264_cabac_encode_decision(&cb, CTX_IDX_AC_START + i, 0);
+                } else {
+                    for (int i = 0; i < 63; i++) {
+                        int16_t c = bd.interReorderedblck8[nblck8][i + 1];
+                        int nz = (c != 0);
+                        x264_cabac_encode_decision(&cb, CTX_IDX_AC_START + i, nz);
+                        if (nz) {
+                            x264_cabac_encode_ue_bypass(&cb, 0, abs(c));
+                            x264_cabac_encode_bypass(&cb, c < 0);
+                        }
+                    }
+                }
+
+                if (stats)
+                    stats->totalAcBits[frm.numOfFrame] += x264_cabac_pos(&cb) - pos0;
+            }
+
+            // Cb/Cr processing
+            CBlockData& cbbd = frm.Cbblocks[nblck16];
+            CBlockData& crbd = frm.Crblocks[nblck16];
+
+            for (int plane = 0; plane < 2; plane++) {
+                CBlockData& cbd = (plane == 0) ? cbbd : crbd;
+
+                int pos0 = x264_cabac_pos(&cb);
+                int dc = cbd.interReorderedblck[0];
+                x264_cabac_encode_decision(&cb, CTX_IDX_DC, dc != 0);
+                if (dc) {
+                    x264_cabac_encode_ue_bypass(&cb, 0, abs(dc));
+                    x264_cabac_encode_bypass(&cb, dc < 0);
+                }
+
+                if (stats)
+                    stats->totalDcBits[frm.numOfFrame] += x264_cabac_pos(&cb) - pos0;
+
+                pos0 = x264_cabac_pos(&cb);
+                x264_cabac_encode_decision(&cb, CTX_AC_PRESENT, !cbd.intraACflag);
+
+                if (cbd.intraACflag == 1) {
+                    for (int i = 0; i < 63; i++)
+                        x264_cabac_encode_decision(&cb, CTX_IDX_AC_START + i, 0);
+                } else {
+                    for (int i = 0; i < 63; i++) {
+                        int16_t c = cbd.interReorderedblck[i + 1];
+                        int nz = (c != 0);
+                        x264_cabac_encode_decision(&cb, CTX_IDX_AC_START + i, nz);
+                        if (nz) {
+                            x264_cabac_encode_ue_bypass(&cb, 0, abs(c));
+                            x264_cabac_encode_bypass(&cb, c < 0);
+                        }
+                    }
+                }
+
+                if (stats)
+                    stats->totalAcBits[frm.numOfFrame] += x264_cabac_pos(&cb) - pos0;
+            }
+        }
+}
+
+void interBody(FrameData& frm, unsigned char* tempFrame, int& cntbits, evx::entropy_coder& dcCoder, evx::entropy_coder& acCoder, evx::entropy_coder& mvCoder, Statistics *stats)
 {
 	int totalblck = frm.nblocks16;
 	int nblock8   = frm.nblocks8;
@@ -5258,8 +5824,11 @@ void interBody(FrameData& frm, unsigned char* tempFrame, int& cntbits, Statistic
 		
 		(tempFrame[cntbits++/8] <<= 1) |= 1;  // mv modeflag
 		
-		MVResult = MVentropy(bd.mv, xMVbits, yMVbits);  // mv; Reconstructedmv�� ���к��Ͱ� �������°� �ƴ� ���� ������ ���͸� ��������; �׷��� mv�� ����
-
+		// MVResult = MVentropy(bd.mv, xMVbits, yMVbits, stats);  // mv; Reconstructedmv�� ���к��Ͱ� �������°� �ƴ� ���� ������ ���͸� ��������; �׷��� mv�� ����
+		// for(int n=0; n<xMVbits+yMVbits; n++)
+		// 		(tempFrame[cntbits++/8]<<=1) |= MVResult[n];
+		// free(MVResult);
+		MVResult = MVentropy(bd.mv, xMVbits, yMVbits, mvCoder, stats);  // mv; Reconstructedmv�� ���к��Ͱ� �������°� �ƴ� ���� ������ ���͸� ��������; �׷��� mv�� ����
 		for(int n=0; n<xMVbits+yMVbits; n++)
 				(tempFrame[cntbits++/8]<<=1) |= MVResult[n];
 		free(MVResult);
@@ -5274,13 +5843,18 @@ void interBody(FrameData& frm, unsigned char* tempFrame, int& cntbits, Statistic
 			DCbits = 0;
 			ACbits = 0;
 
-			DCResult = DCentropy(bd.interReorderedblck8[nblck8][0], DCbits); // DC entropy result ?bits; one value
+			// DCResult = DCentropy(bd.interReorderedblck8[nblck8][0], DCbits, stats); // DC entropy result ?bits; one value
+			// for(int n=0; n<DCbits; n++)
+			// 	(tempFrame[cntbits++/8]<<=1) |= DCResult[n];
+			// free(DCResult);
+			DCResult = DCentropy(bd.interReorderedblck8[nblck8][0], DCbits, dcCoder, stats); // DC entropy result ?bits; one value
 			for(int n=0; n<DCbits; n++)
 				(tempFrame[cntbits++/8]<<=1) |= DCResult[n];
 			free(DCResult);
 
-			if (stats)
+			if (stats) {
 				stats->totalDcBits[frm.numOfFrame] += DCbits;
+			}
 				
 			(tempFrame[cntbits++/8]<<=1) |= bd.interACflag[nblck8]; // acflag 1bit
 			if(bd.interACflag[nblck8] == 1)
@@ -5293,13 +5867,18 @@ void interBody(FrameData& frm, unsigned char* tempFrame, int& cntbits, Statistic
 			}
 			else
 			{
-				ACResult = ACentropy(bd.interReorderedblck8[nblck8], ACbits); // AC entropy result ?bits; 63 values
+				// ACResult = ACentropy(bd.interReorderedblck8[nblck8], ACbits, stats); // AC entropy result ?bits; 63 values
+				// for(int n=0; n<ACbits; n++)
+				// 	(tempFrame[cntbits++/8]<<=1) |= ACResult[n];
+				// free(ACResult);
+				ACResult = ACentropy(bd.interReorderedblck8[nblck8], ACbits, acCoder, stats); // AC entropy result ?bits; 63 values
 				for(int n=0; n<ACbits; n++)
 					(tempFrame[cntbits++/8]<<=1) |= ACResult[n];
 				free(ACResult);
 
-				if (stats)
+				if (stats) {
 					stats->totalAcBits[frm.numOfFrame] += ACbits;
+				}
 			}
 		}
 		//cout << "Yframe bits: " << cntbits << endl;
@@ -5311,13 +5890,18 @@ void interBody(FrameData& frm, unsigned char* tempFrame, int& cntbits, Statistic
 		DCbits = 0;
 		ACbits = 0;
 
-		DCResult = DCentropy(cbbd.interReorderedblck[0], DCbits); // DC entropy result ?bits; one value
+		// DCResult = DCentropy(cbbd.interReorderedblck[0], DCbits, stats); // DC entropy result ?bits; one value
+		// for(int n=0; n<DCbits; n++)
+		// 	(tempFrame[cntbits++/8]<<=1) |= DCResult[n];
+		// free(DCResult);
+		DCResult = DCentropy(cbbd.interReorderedblck[0], DCbits, dcCoder, stats); // DC entropy result ?bits; one value
 		for(int n=0; n<DCbits; n++)
 			(tempFrame[cntbits++/8]<<=1) |= DCResult[n];
 		free(DCResult);
 
-		if (stats)
+		if (stats) {
 			stats->totalDcBits[frm.numOfFrame] += DCbits;
+		}
 
 		(tempFrame[cntbits++/8]<<=1) |= cbbd.interACflag; // acflag 1bit
 		if(cbbd.interACflag == 1)
@@ -5330,25 +5914,35 @@ void interBody(FrameData& frm, unsigned char* tempFrame, int& cntbits, Statistic
 		}
 		else
 		{
-			ACResult = ACentropy(cbbd.interReorderedblck, ACbits); // AC entropy result ?bits; 63 values
+			// ACResult = ACentropy(cbbd.interReorderedblck, ACbits, stats); // AC entropy result ?bits; 63 values
+			// for(int n=0; n<ACbits; n++)
+			// 	(tempFrame[cntbits++/8]<<=1) |= ACResult[n];
+			// free(ACResult);
+			ACResult = ACentropy(cbbd.interReorderedblck, ACbits, acCoder, stats); // AC entropy result ?bits; 63 values
 			for(int n=0; n<ACbits; n++)
 				(tempFrame[cntbits++/8]<<=1) |= ACResult[n];
 			free(ACResult);
 
-			if (stats)
+			if (stats) {
 				stats->totalAcBits[frm.numOfFrame] += ACbits;
+			}
 		}
 
 		DCbits = 0;
 		ACbits = 0;
 
-		DCResult = DCentropy(crbd.interReorderedblck[0], DCbits); // DC entropy result ?bits; one value
+		// DCResult = DCentropy(crbd.interReorderedblck[0], DCbits, stats); // DC entropy result ?bits; one value
+		// for(int n=0; n<DCbits; n++)
+		// 	(tempFrame[cntbits++/8]<<=1) |= DCResult[n];
+		// free(DCResult);
+		DCResult = DCentropy(crbd.interReorderedblck[0], DCbits, dcCoder, stats); // DC entropy result ?bits; one value
 		for(int n=0; n<DCbits; n++)
 			(tempFrame[cntbits++/8]<<=1) |= DCResult[n];
 		free(DCResult);
 
-		if (stats)
+		if (stats) {
 			stats->totalDcBits[frm.numOfFrame] += DCbits;
+		}
 
 		(tempFrame[cntbits++/8]<<=1) |= crbd.interACflag; // acflag 1bit
 		if(crbd.interACflag == 1)
@@ -5361,13 +5955,18 @@ void interBody(FrameData& frm, unsigned char* tempFrame, int& cntbits, Statistic
 		}
 		else
 		{
-			ACResult = ACentropy(crbd.interReorderedblck, ACbits); // AC entropy result ?bits; 63 values
+			// ACResult = ACentropy(crbd.interReorderedblck, ACbits, stats); // AC entropy result ?bits; 63 values
+			// for(int n=0; n<ACbits; n++)
+			// 	(tempFrame[cntbits++/8]<<=1) |= ACResult[n];
+			// free(ACResult);
+			ACResult = ACentropy(crbd.interReorderedblck, ACbits, acCoder, stats); // AC entropy result ?bits; 63 values
 			for(int n=0; n<ACbits; n++)
 				(tempFrame[cntbits++/8]<<=1) |= ACResult[n];
 			free(ACResult);
 
-			if (stats)
+			if (stats) {
 				stats->totalAcBits[frm.numOfFrame] += ACbits;
+			}
 		}
 	}
 	if (stats) {
@@ -5375,6 +5974,9 @@ void interBody(FrameData& frm, unsigned char* tempFrame, int& cntbits, Statistic
 		// Here we have bits for all
 		stats->totalEntropyBits[i] = stats->totalAcBits[i] + stats->totalDcBits[i] + stats->totalMvBits[i];
 	}
+	dcCoder.clear();
+	acCoder.clear();
+	mvCoder.clear();
 }
 int DCentropy(int DCval, unsigned char *DCentropyResult)
 {
@@ -5556,9 +6158,15 @@ int DCentropy(int DCval, unsigned char *DCentropyResult)
 
 	return nbits;
 }
-unsigned char* DCentropy(int DCval, int& nbits)
+unsigned char* DCentropy(int DCval, int& nbits, evx::entropy_coder& encoder, Statistics* stats){
+	if (EC == EntropyCoding::Abac) return DCentropyCabac(DCval,nbits,encoder, stats);
+	return DCentropyOriginal(DCval,nbits, stats);
+}
+unsigned char* DCentropyOriginal(int DCval, int& nbits, Statistics* stats)
 {
+	// Absolute value
 	int value = 0;
+	// Sign, 0 if negative and 1 if positive
 	int sign  = 0;
 	int exp   = 0;
 	int c     = 0;
@@ -5581,6 +6189,12 @@ unsigned char* DCentropy(int DCval, int& nbits)
 	else if(value>=1024 &&  value<=2047) nbits=20;
 	else if(value>=2048)				 nbits=22;
 
+	if (stats) {
+		stats->dcNbitsHistogram[nbits] += 1;
+		stats->dcValuesHistogram[min(value, 2048)] += 1;
+	}
+
+	// One unsigned char per bit
 	unsigned char* DCentropyResult = (unsigned char*)malloc(sizeof(unsigned char)*nbits);	
 	
 	if(DCentropyResult==NULL)
@@ -5930,14 +6544,15 @@ int ACentropy(int* reordblck, unsigned char *ACentropyResult)
 
 	return nbits;
 }
-unsigned char* ACentropy(int* reordblck, int& nbits)
-{
+unsigned char* ACentropyOriginal(int* reordblck, int& nbits,Statistics* stats ){
 	int value  = 0;
 	int sign   = 0;
 	int exp    = 0;
 	int c      = 0;
 	int idx    = 0;
 	int length = 63; // except DC value of total 64 values
+
+	int lastNbits = 0;
 
 	for(int i=0; i<length; i++)
 	{
@@ -5955,6 +6570,12 @@ unsigned char* ACentropy(int* reordblck, int& nbits)
 		else if(value>=512  &&  value<=1023) nbits+=18;
 		else if(value>=1024 &&  value<=2047) nbits+=20;
 		else if(value>=2048)				 nbits+=22;
+
+		if (stats) {
+			stats->acNbitsHistogram[nbits-lastNbits] += 1;
+			stats->acValuesHistogram[min(value, 2048)] += 1;
+			lastNbits = nbits;
+		}
 	}
 
 
@@ -6129,8 +6750,80 @@ unsigned char* ACentropy(int* reordblck, int& nbits)
 	//system("pause");
 	return ACentropyResult;
 }
-unsigned char* MVentropy(MotionVector mv, int& nbitsx, int& nbitsy)
+
+unsigned char* ACentropy(int* reordblck, int& nbits, evx::entropy_coder& encoder, Statistics* stats)
 {
+	if (EC == EntropyCoding::Abac) return ACentropyCabac(reordblck, nbits, encoder, stats);
+	else if (EC == EntropyCoding::Huffman)  return ACentropyHuffman(reordblck, nbits);
+	return ACentropyOriginal(reordblck, nbits,stats);
+	
+}
+
+unsigned char* ACentropyHuffman(int* reordblck, int& nbits) {
+	const int length = 63;
+	unordered_map<int, int> freq;
+
+	// Step 1: Count frequencies of absolute values (skip DC)
+	for (int i = 0; i < length; ++i) {
+		int absval = abs(reordblck[i + 1]);
+		freq[absval]++;
+	}
+
+	// Step 2: Build Huffman tree
+	priority_queue<HuffNode*, vector<HuffNode*>, CompareNode> pq;
+	for (const auto& entry : freq) {
+		pq.push(new HuffNode(entry.first, entry.second));
+	}
+	while (pq.size() > 1) {
+		HuffNode* left = pq.top(); pq.pop();
+		HuffNode* right = pq.top(); pq.pop();
+		pq.push(new HuffNode(left, right));
+	}
+	HuffNode* root = pq.top();
+
+	// Step 3: Generate Huffman codes
+	unordered_map<int, string> huffmanCode;
+	buildCodes(root, "", huffmanCode);
+
+	// Step 4: Encode bitstream
+	vector<bool> bitstream;
+	for (int i = 0; i < length; ++i) {
+		int coeff = reordblck[i + 1];
+		int absval = abs(coeff);
+		int sign = coeff >= 0 ? 1 : 0;
+
+		// Get Huffman code
+		string code = huffmanCode[absval];
+		for (char c : code)
+			bitstream.push_back(c == '1');
+
+		if (absval != 0)
+			bitstream.push_back(sign);
+	}
+
+	nbits = bitstream.size();
+	int nbytes = (nbits + 7) / 8;
+	unsigned char* encoded = (unsigned char*)malloc(nbytes);
+	if (!encoded) {
+		cerr << "Memory allocation failed.\n";
+		exit(EXIT_FAILURE);
+	}
+	for (int i = 0; i < nbytes; ++i) encoded[i] = 0;
+
+	// Step 5: Pack bits into bytes
+	for (int i = 0; i < nbits; ++i) {
+		if (bitstream[i]) {
+			encoded[i / 8] |= (1 << (7 - (i % 8)));
+		}
+	}
+
+	// Clean up
+	freeTree(root);
+
+	return encoded;
+}
+
+unsigned char* MVentropyOriginal(MotionVector mv, int& nbitsx, int& nbitsy, Statistics* stats){
 	int xValue = 0;
 	int yValue = 0;
 	int xsign  = 0;
@@ -6172,6 +6865,13 @@ unsigned char* MVentropy(MotionVector mv, int& nbitsx, int& nbitsy)
 	else if(yValue>=512  &&  yValue<=1023) nbitsy=18;
 	else if(yValue>=1024 &&  yValue<=2047) nbitsy=20;
 	else if(yValue>=2048)				   nbitsy=22;	
+	
+	if (stats) {
+		stats->mvxNbitsHistogram[nbitsx] += 1;
+		stats->mvyNbitsHistogram[nbitsy] += 1;
+		stats->mvxValuesHistogram[min(xValue, 2048)] += 1;
+		stats->mvyValuesHistogram[min(yValue, 2048)] += 1;
+	}
 	
 	unsigned char* MVentropyResult = (unsigned char*)malloc(sizeof(unsigned char)*(nbitsx+nbitsy));
 	if(MVentropyResult==NULL)
@@ -6474,7 +7174,51 @@ unsigned char* MVentropy(MotionVector mv, int& nbitsx, int& nbitsy)
 
 	return MVentropyResult;
 }
+unsigned char* MVentropy(MotionVector mv, int& nbitsx, int& nbitsy,evx::entropy_coder& encoder, Statistics* stats){
+	if(EC == EntropyCoding::Abac) return MVentropyCabac(mv,nbitsx,nbitsy, encoder, stats);
+	return MVentropyOriginal(mv,nbitsx,nbitsy, stats);
+}
 
+unsigned char* DCentropyCabac(int DCval, int& nbits, evx::entropy_coder& encoder, Statistics* stats) {
+	auto src = evx::bitstream {(void *) &DCval, sizeof(int)};
+	auto dst = evx::bitstream {(sizeof(int) << 3)};
+	encoder.encode(&src, &dst, false);
+	nbits = dst.query_occupancy();
+	auto DCentropyResult = (unsigned char*)malloc(sizeof(unsigned char)*nbits);	
+	dst.seek(0);
+	for (int i = 0; i < nbits; i++)
+		dst.read_bit(DCentropyResult + i);
+	return DCentropyResult;
+}
+
+unsigned char* ACentropyCabac(int* reordblck, int& nbits, evx::entropy_coder& encoder, Statistics* stats) {
+	// Size of 63 ints, as much as the AC values
+	constexpr unsigned len = sizeof(int) * 63;
+	auto src = evx::bitstream {(void *) (reordblck + 1), len};
+	auto dst = evx::bitstream {len};
+	encoder.encode(&src, &dst, false);
+	nbits = dst.query_occupancy();
+	auto ACentropyResult = (unsigned char*)malloc(sizeof(unsigned char)*nbits);	
+	dst.seek(0);
+	for (int i = 0; i < nbits; i++)
+		dst.read_bit(ACentropyResult + i);
+	return ACentropyResult;
+}
+
+unsigned char* MVentropyCabac(MotionVector mv, int& nbitsx, int& nbitsy, evx::entropy_coder& encoder, Statistics* stats) {
+	auto src_x = evx::bitstream {(void *) &mv.x, sizeof(int)};
+	auto src_y = evx::bitstream {(void *) &mv.y, sizeof(int)};
+	auto dst = evx::bitstream {sizeof(int) * 8 * 2};
+	encoder.encode(&src_x, &dst, false);
+	nbitsx = dst.query_occupancy();
+	encoder.encode(&src_y, &dst, false);
+	nbitsy = dst.query_occupancy() - nbitsx;
+	auto MVentropyResult = (unsigned char*)malloc(sizeof(unsigned char)*(nbitsx+nbitsy));
+	dst.seek(0);
+	for (int i = 0; i < nbitsx + nbitsy; i++)
+		dst.read_bit(MVentropyResult + i);
+	return MVentropyResult;
+}
 
 /* checking image function */
 void checkResultY(unsigned char *Y, int width, int height)

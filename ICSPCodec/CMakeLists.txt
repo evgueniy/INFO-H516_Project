@@ -20,6 +20,10 @@ SET ( SRC_FILES
         source/encoder/ICSP_Codec_Encoder_source.cpp
         source/encoder/ICSPCodec.cpp
         source/encoder/ICSP_thread.cpp
+        source/encoder/abac/bitstream.cpp
+        source/encoder/abac/cabac.cpp
+        source/encoder/abac/memory.cpp
+	source/encoder/cabac.c
         )
  
  
