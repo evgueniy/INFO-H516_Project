@@ -43,8 +43,9 @@ typedef enum
 
 enum class EntropyCoding {
     Original,
-    Cabac,
-    Huffman
+    Abac,
+    Huffman,
+	Cabac
 };
 
 typedef struct 

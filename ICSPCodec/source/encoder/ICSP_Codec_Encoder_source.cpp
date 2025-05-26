@@ -310,8 +310,9 @@ static int parsing_command(int argc, char *argv[], cmd_options_t *cmd)
 				{
 					memcpy(cmd->entropy_coder, argv[i+1], sizeof(char)*128);
 					if(strcmp(cmd->entropy_coder,"original") != 0 && 
-						strcmp(cmd->entropy_coder,"cabac") != 0 && 
-						strcmp(cmd->entropy_coder,"huffman") != 0 )
+						strcmp(cmd->entropy_coder,"abac") != 0 && 
+						strcmp(cmd->entropy_coder,"huffman") != 0 &&
+						strcmp(cmd->entropy_coder,"cabac") != 0)
 						sprintf(cmd->entropy_coder,"original");
 				}
 				else if (option[1] == 'n')
@@ -394,6 +395,7 @@ void single_thread_encoding(FrameData* frames, YCbCr_t* YCbCr,char* fname, int i
 {
 	/*Use of global EntropyCoder var*/
 	if(strcmp(entropyCoder,"original") == 0) EC = EntropyCoding::Original;
+	else if(strcmp(entropyCoder,"abac") == 0) EC = EntropyCoding::Abac;
 	else if(strcmp(entropyCoder,"cabac") == 0) EC = EntropyCoding::Cabac;
 	else EC = EntropyCoding::Huffman;
 
@@ -5821,7 +5823,7 @@ int DCentropy(int DCval, unsigned char *DCentropyResult)
 	return nbits;
 }
 unsigned char* DCentropy(int DCval, int& nbits, evx::entropy_coder& encoder, Statistics* stats){
-	if (EC == EntropyCoding::Cabac) return DCentropyCabac(DCval,nbits,encoder, stats);
+	if (EC == EntropyCoding::Abac) return DCentropyCabac(DCval,nbits,encoder, stats);
 	return DCentropyOriginal(DCval,nbits, stats);
 }
 unsigned char* DCentropyOriginal(int DCval, int& nbits, Statistics* stats)
@@ -6415,7 +6417,7 @@ unsigned char* ACentropyOriginal(int* reordblck, int& nbits,Statistics* stats ){
 
 unsigned char* ACentropy(int* reordblck, int& nbits, evx::entropy_coder& encoder, Statistics* stats)
 {
-	if (EC == EntropyCoding::Cabac) return ACentropyCabac(reordblck, nbits, encoder, stats);
+	if (EC == EntropyCoding::Abac) return ACentropyCabac(reordblck, nbits, encoder, stats);
 	else if (EC == EntropyCoding::Huffman)  return ACentropyHuffman(reordblck, nbits);
 	return ACentropyOriginal(reordblck, nbits,stats);
 	
@@ -6837,7 +6839,7 @@ unsigned char* MVentropyOriginal(MotionVector mv, int& nbitsx, int& nbitsy, Stat
 	return MVentropyResult;
 }
 unsigned char* MVentropy(MotionVector mv, int& nbitsx, int& nbitsy,evx::entropy_coder& encoder, Statistics* stats){
-	if(EC == EntropyCoding::Cabac) return MVentropyCabac(mv,nbitsx,nbitsy, encoder, stats);
+	if(EC == EntropyCoding::Abac) return MVentropyCabac(mv,nbitsx,nbitsy, encoder, stats);
 	return MVentropyOriginal(mv,nbitsx,nbitsy, stats);
 }
 
