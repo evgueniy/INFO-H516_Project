@@ -103,11 +103,11 @@ void print_help_message()
 {
 	printf("usage: ./ICSPCodec [option] [values]\n");
 	printf("-i : input yuv sequence\n");
-	printf("-w : width\n");
-	printf("-h : height\n");
 	printf("-n : the number of frames(default is 1)\n");
 	printf("-q : QP of DC and AC (16, 8, or 1)\n");
-	printf("-h : help message\n");
+	printf("-h : set the height value (default CIF: 288)\n");
+	printf("-w : set the width value (default CIF: 352)\n");
+	printf("-e : set the entropy coder to use (original, abac, huffman or cabac - Default: original )\n");
 	printf("--help : help message\n");
 	printf("--qpdc : QP of DC (16, 8, or 1)\n");
 	printf("--qpac : QP of AC (16, 8, or 1)\n");
@@ -263,6 +263,8 @@ static int parsing_command(int argc, char *argv[], cmd_options_t *cmd)
 	if (argc < 2)
 		return UNENOUGH_PARAM;	
 	
+	cmd -> height = 288;
+	cmd -> width = 352;
 	for(int i=1; i<argc; i++)
 	{		
 		char option[256];
@@ -326,8 +328,11 @@ static int parsing_command(int argc, char *argv[], cmd_options_t *cmd)
 				}
 				else if (option[1] =='h')
 				{
-					print_help_message();
-					exit(0);
+					cmd->height = atoi(argv[i+1]);
+				}
+				else if (option[1] =='w')
+				{
+					cmd->width = atoi(argv[i+1]);
 				}
 				else
 				{
