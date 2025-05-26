@@ -23,6 +23,7 @@ SET ( SRC_FILES
         source/encoder/abac/bitstream.cpp
         source/encoder/abac/cabac.cpp
         source/encoder/abac/memory.cpp
+	source/encoder/cabac.c
         )
  
  

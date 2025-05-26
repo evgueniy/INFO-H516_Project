@@ -396,8 +396,11 @@ void single_thread_encoding(FrameData* frames, YCbCr_t* YCbCr,char* fname, int i
 	/*Use of global EntropyCoder var*/
 	if(strcmp(entropyCoder,"original") == 0) EC = EntropyCoding::Original;
 	else if(strcmp(entropyCoder,"abac") == 0) EC = EntropyCoding::Abac;
-	else if(strcmp(entropyCoder,"cabac") == 0) EC = EntropyCoding::Cabac;
-	else EC = EntropyCoding::Huffman;
+	else if(strcmp(entropyCoder,"huffman") == 0) EC = EntropyCoding::Huffman;
+	else {
+		EC = EntropyCoding::Cabac;
+		x264_cabac_init();
+	} 
 
 	if( intra_period==ALL_INTRA )
 	{
@@ -5087,8 +5090,8 @@ void makebitstream(FrameData* frames, int nframes, int height, int width, int Qs
 
 		for(int n=0; n<nframes; n++)
 		{
+			x264_cabac_t cb;
 			if (EC == EntropyCoding::Cabac){
-				x264_cabac_t cb;
 				int slice_type = (n % intraPeriod == 0) ? SLICE_TYPE_I : SLICE_TYPE_P;
 				x264_cabac_context_init(&cb, slice_type, QstepDC, 0);
         		x264_cabac_encode_init(&cb, tempFrame, tempFrameEnd);
@@ -5146,6 +5149,7 @@ void headerinit(header& hd, int height, int width, int QstepDC, int QstepAC, int
 		(hd.outro <<= 1) |= 0;	// last bits = 0;
 	}
 }
+
 void allintraBodyCabac(FrameData* frames, int nframes, int QstepDC, FILE* fp, Statistics *stats) {
     int totalblck = frames->nblocks16;
     int nblock8   = frames->nblocks8;
@@ -5258,8 +5262,6 @@ void allintraBodyCabac(FrameData* frames, int nframes, int QstepDC, FILE* fp, St
 
     free(frame);
 }
-
-
 
 void allintraBody(FrameData* frames, int nframes, FILE* fp, evx::entropy_coder& dcCoder, evx::entropy_coder& acCoder, Statistics *stats)
 {
@@ -5433,6 +5435,97 @@ void allintraBody(FrameData* frames, int nframes, FILE* fp, evx::entropy_coder& 
 	fwrite(frame, (cntbits/8)+1, 1, fp); 
 	free(frame);
 }
+
+void intraBodyCabac(FrameData& frm, unsigned char* tempFrame, int& cntbits,x264_cabac_t& cb, Statistics *stats) {
+	int totalblck = frm.nblocks16;
+	int nblock8   = frm.nblocks8;
+	int idx       = 0;
+	int DCbits    = 0;
+	int ACbits    = 0;
+	int bytbits   = 0;
+
+	unsigned char* DCResult = NULL;
+	unsigned char* ACResult = NULL;
+	for (int nblck16 = 0; nblck16 < totalblck; nblck16++) {
+            BlockData& bd = frm.blocks[nblck16];
+            for (int nblck8 = 0; nblck8 < nblock8; nblck8++) {
+                x264_cabac_encode_decision(&cb, CTX_MPM_FLAG, bd.MPMFlag[nblck8]);
+                x264_cabac_encode_decision(&cb, CTX_INTRA_PRED, bd.intraPredMode[nblck8]);
+				int pos0 = x264_cabac_pos(&cb);
+                int dc = bd.intraReorderedblck8[nblck8][0];
+                x264_cabac_encode_decision(&cb, CTX_IDX_DC, dc != 0);
+                if (dc) {
+                    x264_cabac_encode_ue_bypass(&cb, 0, abs(dc));
+                    x264_cabac_encode_bypass(&cb, dc < 0);
+                }
+
+                if (stats)
+                    stats->totalDcBits[frm.numOfFrame] += x264_cabac_pos(&cb) - pos0;
+
+                pos0 = x264_cabac_pos(&cb);
+                x264_cabac_encode_decision(&cb, CTX_AC_PRESENT, !bd.intraACflag[nblck8]);
+
+                if (bd.intraACflag[nblck8] == 1) {
+                    for (int i = 0; i < 63; i++)
+                        x264_cabac_encode_decision(&cb, CTX_IDX_AC_START + i, 0);
+                } else {
+                    for (int i = 0; i < 63; i++) {
+                        int16_t c = bd.intraReorderedblck8[nblck8][i + 1];
+                        int nz = (c != 0);
+                        x264_cabac_encode_decision(&cb, CTX_IDX_AC_START + i, nz);
+                        if (nz) {
+                            x264_cabac_encode_ue_bypass(&cb, 0, abs(c));
+                            x264_cabac_encode_bypass(&cb, c < 0);
+                        }
+                    }
+                }
+
+                if (stats)
+                    stats->totalAcBits[frm.numOfFrame] += x264_cabac_pos(&cb) - pos0;
+            }
+
+            // Cb/Cr processing
+            CBlockData& cbbd = frm.Cbblocks[nblck16];
+            CBlockData& crbd = frm.Crblocks[nblck16];
+
+            for (int plane = 0; plane < 2; plane++) {
+                CBlockData& cbd = (plane == 0) ? cbbd : crbd;
+
+                int pos0 = x264_cabac_pos(&cb);
+                int dc = cbd.intraReorderedblck[0];
+                x264_cabac_encode_decision(&cb, CTX_IDX_DC, dc != 0);
+                if (dc) {
+                    x264_cabac_encode_ue_bypass(&cb, 0, abs(dc));
+                    x264_cabac_encode_bypass(&cb, dc < 0);
+                }
+
+                if (stats)
+                    stats->totalDcBits[frm.numOfFrame] += x264_cabac_pos(&cb) - pos0;
+
+                pos0 = x264_cabac_pos(&cb);
+                x264_cabac_encode_decision(&cb, CTX_AC_PRESENT, !cbd.intraACflag);
+
+                if (cbd.intraACflag == 1) {
+                    for (int i = 0; i < 63; i++)
+                        x264_cabac_encode_decision(&cb, CTX_IDX_AC_START + i, 0);
+                } else {
+                    for (int i = 0; i < 63; i++) {
+                        int16_t c = cbd.intraReorderedblck[i + 1];
+                        int nz = (c != 0);
+                        x264_cabac_encode_decision(&cb, CTX_IDX_AC_START + i, nz);
+                        if (nz) {
+                            x264_cabac_encode_ue_bypass(&cb, 0, abs(c));
+                            x264_cabac_encode_bypass(&cb, c < 0);
+                        }
+                    }
+                }
+
+                if (stats)
+                    stats->totalAcBits[frm.numOfFrame] += x264_cabac_pos(&cb) - pos0;
+            }
+        }
+}
+
 void intraBody(FrameData& frm, unsigned char* tempFrame, int& cntbits, evx::entropy_coder& dcCoder, evx::entropy_coder& acCoder, Statistics *stats)
 {
 	int totalblck = frm.nblocks16;
@@ -5602,6 +5695,112 @@ void intraBody(FrameData& frm, unsigned char* tempFrame, int& cntbits, evx::entr
 	dcCoder.clear();
 	acCoder.clear();
 }
+
+void interBodyCabac(FrameData& frm, unsigned char* tempFrame, int& cntbits,x264_cabac_t& cb, Statistics *stats) {
+	int totalblck = frm.nblocks16;
+	int nblock8   = frm.nblocks8;
+	int idx       = 0;
+	
+	int DCbits    = 0;
+	int ACbits    = 0;
+	int bytbits   = 0;
+	int xMVbits   = 0;
+	int yMVbits   = 0;
+	
+	unsigned char* DCResult = NULL;
+	unsigned char* ACResult = NULL;
+	unsigned char* MVResult = NULL;
+	for (int nblck16 = 0; nblck16 < totalblck; nblck16++) {
+            BlockData& bd = frm.blocks[nblck16];
+			int pos0 = x264_cabac_pos(&cb);
+        	x264_cabac_encode_decision(&cb, 103, /*has MV?*/ 1);
+			//X
+			int mvx = bd.mv.x;  // signed delta
+        	x264_cabac_encode_ue_bypass(&cb, 0, abs(mvx));
+        	x264_cabac_encode_bypass(&cb, mvx < 0);
+			//Y
+        	int mvy = bd.mv.y;
+        	x264_cabac_encode_ue_bypass(&cb, 0, abs(mvy));
+        	x264_cabac_encode_bypass   (&cb, mvy < 0);
+        	if (stats) stats->totalMvBits[frm.numOfFrame] += x264_cabac_pos(&cb) - pos0;
+            for (int nblck8 = 0; nblck8 < nblock8; nblck8++) {
+                x264_cabac_encode_decision(&cb, CTX_MPM_FLAG, bd.MPMFlag[nblck8]);
+                x264_cabac_encode_decision(&cb, CTX_INTRA_PRED, bd.intraPredMode[nblck8]);
+				pos0 = x264_cabac_pos(&cb);
+                int dc = bd.interReorderedblck8[nblck8][0];
+                x264_cabac_encode_decision(&cb, CTX_IDX_DC, dc != 0);
+                if (dc) {
+                    x264_cabac_encode_ue_bypass(&cb, 0, abs(dc));
+                    x264_cabac_encode_bypass(&cb, dc < 0);
+                }
+
+                if (stats)
+                    stats->totalDcBits[frm.numOfFrame] += x264_cabac_pos(&cb) - pos0;
+
+                pos0 = x264_cabac_pos(&cb);
+                x264_cabac_encode_decision(&cb, CTX_AC_PRESENT, !bd.intraACflag[nblck8]);
+
+                if (bd.intraACflag[nblck8] == 1) {
+                    for (int i = 0; i < 63; i++)
+                        x264_cabac_encode_decision(&cb, CTX_IDX_AC_START + i, 0);
+                } else {
+                    for (int i = 0; i < 63; i++) {
+                        int16_t c = bd.interReorderedblck8[nblck8][i + 1];
+                        int nz = (c != 0);
+                        x264_cabac_encode_decision(&cb, CTX_IDX_AC_START + i, nz);
+                        if (nz) {
+                            x264_cabac_encode_ue_bypass(&cb, 0, abs(c));
+                            x264_cabac_encode_bypass(&cb, c < 0);
+                        }
+                    }
+                }
+
+                if (stats)
+                    stats->totalAcBits[frm.numOfFrame] += x264_cabac_pos(&cb) - pos0;
+            }
+
+            // Cb/Cr processing
+            CBlockData& cbbd = frm.Cbblocks[nblck16];
+            CBlockData& crbd = frm.Crblocks[nblck16];
+
+            for (int plane = 0; plane < 2; plane++) {
+                CBlockData& cbd = (plane == 0) ? cbbd : crbd;
+
+                int pos0 = x264_cabac_pos(&cb);
+                int dc = cbd.interReorderedblck[0];
+                x264_cabac_encode_decision(&cb, CTX_IDX_DC, dc != 0);
+                if (dc) {
+                    x264_cabac_encode_ue_bypass(&cb, 0, abs(dc));
+                    x264_cabac_encode_bypass(&cb, dc < 0);
+                }
+
+                if (stats)
+                    stats->totalDcBits[frm.numOfFrame] += x264_cabac_pos(&cb) - pos0;
+
+                pos0 = x264_cabac_pos(&cb);
+                x264_cabac_encode_decision(&cb, CTX_AC_PRESENT, !cbd.intraACflag);
+
+                if (cbd.intraACflag == 1) {
+                    for (int i = 0; i < 63; i++)
+                        x264_cabac_encode_decision(&cb, CTX_IDX_AC_START + i, 0);
+                } else {
+                    for (int i = 0; i < 63; i++) {
+                        int16_t c = cbd.interReorderedblck[i + 1];
+                        int nz = (c != 0);
+                        x264_cabac_encode_decision(&cb, CTX_IDX_AC_START + i, nz);
+                        if (nz) {
+                            x264_cabac_encode_ue_bypass(&cb, 0, abs(c));
+                            x264_cabac_encode_bypass(&cb, c < 0);
+                        }
+                    }
+                }
+
+                if (stats)
+                    stats->totalAcBits[frm.numOfFrame] += x264_cabac_pos(&cb) - pos0;
+            }
+        }
+}
+
 void interBody(FrameData& frm, unsigned char* tempFrame, int& cntbits, evx::entropy_coder& dcCoder, evx::entropy_coder& acCoder, evx::entropy_coder& mvCoder, Statistics *stats)
 {
 	int totalblck = frm.nblocks16;

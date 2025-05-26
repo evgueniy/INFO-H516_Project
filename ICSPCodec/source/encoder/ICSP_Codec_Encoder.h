@@ -11,7 +11,7 @@
 
 #include "abac/bitstream.h"
 #include "abac/cabac.h"
-
+#include "cabac.h"
 using namespace std;
 
 #ifdef WIN_MODE
@@ -25,7 +25,10 @@ using namespace std;
 #define CR 4
 #define SAVE_Y 5
 #define SAVE_YUV 6 
-
+#define CTX_MPM_FLAG       100   // for mpm flag
+#define CTX_INTRA_PRED     101   // for intraPredMode flag
+#define CTX_AC_PRESENT     102   // for your intraACflag (AC‑present)
+#define CTX_MV_FLAG    	   103  // motion vector flags
 typedef enum
 {
 	I_FRAME=0,
@@ -367,8 +370,11 @@ void entropyCoding(int* reordblck, int length);
 void entropyCoding(FrameData& frm, int predmode);
 void makebitstream(FrameData* frames, int nframes, int height, int width, int QstepDC, int QstepAC, int intraPeriod, int predmode, Statistics *stats = nullptr);
 void headerinit(header& hd, int height, int width, int QstepDC, int QstepAC, int intraPeriod);
+void allintraBodyCabac(FrameData* frames, int nframes, int QstepDC, FILE* fp, Statistics *stats);
 void allintraBody(FrameData* frames, int nframes, FILE* fp, evx::entropy_coder& dcCoder, evx::entropy_coder& acCoder, Statistics *stats = nullptr);
+void intraBodyCabac(FrameData& frm, unsigned char* tempFrame, int& cntbits,x264_cabac_t& cb, Statistics *stats);
 void intraBody(FrameData& frm, unsigned char* tempFrame, int& cntbits, evx::entropy_coder& dcCoder, evx::entropy_coder& acCoder, Statistics *stats = nullptr);
+void interBodyCabac(FrameData& frm, unsigned char* tempFrame, int& cntbits,x264_cabac_t& cb, Statistics *stats);
 void interBody(FrameData& frm, unsigned char* tempFrame, int& cntbits, evx::entropy_coder& dcCoder, evx::entropy_coder& acCoder, evx::entropy_coder& mvCoder, Statistics *stats = nullptr);
 int DCentropy(int DCval, unsigned char *DCentropyResult);
 unsigned char* DCentropy(int DCval, int& nbits, evx::entropy_coder& encoder, Statistics* stats = nullptr);
