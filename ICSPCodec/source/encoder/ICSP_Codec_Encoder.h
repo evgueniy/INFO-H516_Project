@@ -57,6 +57,8 @@ typedef struct
 	int total_frames;
 	int QP_DC;
 	int QP_AC;
+	int height;
+	int width;
 	int intra_period;
 	int multi_thread_mode;
 	int nthreads;

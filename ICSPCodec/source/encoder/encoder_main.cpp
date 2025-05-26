@@ -39,11 +39,11 @@ int main(int argc, char *argv[])
 	if (stat(resultDirectory, &st) == -1) {
     mkdir(resultDirectory, 0700);
 	}
-
+	printf("Resolution: %dx%d\n", options.width,options.height);
 	Statistics stats {};
 
 	IcspCodec icspCodec;
-	icspCodec.init(options.total_frames, options.yuv_fname, 352, 288, options.QP_DC, options.QP_AC);
+	icspCodec.init(options.total_frames, options.yuv_fname, options.width, options.height, options.QP_DC, options.QP_AC);
 	icspCodec.encoding(&options, &stats);
 
 	writeFrameStats(stats, filename, options.intra_period, options.QP_DC, options.QP_AC);
