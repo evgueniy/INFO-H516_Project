@@ -26,6 +26,7 @@
  *****************************************************************************/
 
 #include "cabac.h"
+#include "string.h"
 
 static uint8_t cabac_contexts[4][QP_MAX_SPEC+1][1024];
 
