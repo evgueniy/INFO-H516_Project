@@ -70,10 +70,12 @@ elif argSize == 3:
 
 if encodingArg.lower() == "original":
     enc_suffix = "0"
-elif encodingArg.lower() == "cabac":
+elif encodingArg.lower() == "abac":
     enc_suffix = "1"
 elif encodingArg.lower() == "huffman":
     enc_suffix = "2"
+elif encodingArg.lower() == "cabac":
+    enc_suffix = "3"
 else:
     print("Invalid encoding option. Must be one of original, cabac, huffman")
     sys.exit(1)

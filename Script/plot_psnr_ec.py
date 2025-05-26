@@ -79,7 +79,7 @@ else:
         encoders = [sys.argv[6]]
     else:
         encoders = [sys.argv[6], sys.argv[7]]
-enc_map = {"original": "0", "cabac": "1", "huffman": "2"}
+enc_map = {"original": "0", "abac": "1", "huffman": "2","cabac":"3"}
 encs = {}
 for enc in encoders:
     enc_lower = enc.lower()

@@ -5185,7 +5185,7 @@ void allintraBodyCabac(FrameData* frames, int nframes, int QstepDC, FILE* fp, St
                 if (stats)
                     stats->totalDcBits[frames[nfrm].numOfFrame] += x264_cabac_pos(&cb) - pos0;
 
-                pos0 = x264_cabac_pos(&cb);
+                pos0 = x264_cabac_pos(&cb); 
                 x264_cabac_encode_decision(&cb, CTX_AC_PRESENT, !bd.intraACflag[nblck8]);
 
                 if (bd.intraACflag[nblck8] == 1) {
@@ -5712,9 +5712,10 @@ void interBodyCabac(FrameData& frm, unsigned char* tempFrame, int& cntbits,x264_
 	unsigned char* MVResult = NULL;
 	for (int nblck16 = 0; nblck16 < totalblck; nblck16++) {
             BlockData& bd = frm.blocks[nblck16];
-			int pos0 = x264_cabac_pos(&cb);
-        	x264_cabac_encode_decision(&cb, 103, /*has MV?*/ 1);
+			// has MV?
+        	x264_cabac_encode_decision(&cb, CTX_MV_FLAG,  1);
 			//X
+			int pos0 = x264_cabac_pos(&cb);
 			int mvx = bd.mv.x;  // signed delta
         	x264_cabac_encode_ue_bypass(&cb, 0, abs(mvx));
         	x264_cabac_encode_bypass(&cb, mvx < 0);
