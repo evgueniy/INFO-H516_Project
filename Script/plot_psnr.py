@@ -4,7 +4,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import subprocess
 from bjontegaard import bd_rate, bd_psnr
-
+import re
 def plotDataFrame(dataFrame, intraPeriod: list,codec):
     fig, ax1 = plt.subplots(figsize=(10, 6))
     maxPsnr = dataFrame.filter(like="psnr_").max().max()
@@ -80,8 +80,17 @@ else:
     print("Invalid encoding option. Must be one of original, cabac, huffman")
     sys.exit(1)
 
-name = os.path.basename(yuvFile)
-name = name.split("_")[0]
+res = {"qcif": (str(352//2),str(288//2)), "cif": (str(352),str(288)), "4cif": (str(352*2),str(288*2)) }
+fileName = os.path.basename(yuvFile)
+pattern = r"(.*)_([4|Q|q]?cif)[(]*[a-zA-Z0-9]*[)]*_([0-9]+)f"
+match = re.search(pattern, fileName)
+name = match.group(1)
+format = match.group(2)
+width = res[format][0]
+height = res[format][1]
+nFrames = match.group(3)
+fps = 30 if match.group(2) == "cif" else 60
+# changing to avoid building proper path in c code :) 
 print("Before change:", os.getcwd())
 os.chdir("../ICSPCodec/build/Release/")
 print("After change:", os.getcwd())
@@ -89,7 +98,6 @@ print("After change:", os.getcwd())
 print(f"File: {yuvFile}\n--> Qp's: {qps} for inter values: [0,8,16,32,300]")
 yuvFile = f'../../data/{os.path.basename(yuvFile)}'
 print(f"File after change: {yuvFile}\n--> Qp's: {qps} for inter values: [0,8,16,32,300]")
-
 intraPeriod = [0,8,16,32,300]
 bitrate = {f'bitrate_{key}' : [] for key in intraPeriod}
 psnrs = {f'psnr_{key}': [] for key in intraPeriod}
@@ -98,8 +106,8 @@ for i in range(len(qps)):
     for j in range(len(intraPeriod)):
         csvFilename = f"../../results/{name}_{qps[i]}_{qps[i]}_{intraPeriod[j]}_{enc_suffix}.csv"
         if not os.path.exists(csvFilename):
-            print(f"Generating data for qp: {qps[i]} - inter: {intraPeriod[j]} - encoder: {encodingArg}")
-            commandArgs = [f"{os.getcwd()}/ICSPCodec", "-i", yuvFile, "-n", "300", "-q", f"{qps[i]}", "--intraPeriod", f"{intraPeriod[j]}", "--EnMultiThread", "0","-e",encodingArg]
+            print(f"Generating data for qp: {qps[i]} - inter: {intraPeriod[j]} - encoder: {encodingArg} - nframes: {nFrames} - width: {width} - height: {height} ")
+            commandArgs = [f"{os.getcwd()}/ICSPCodec", "-i", yuvFile, "-n", nFrames, "-q", f"{qps[i]}", "--intraPeriod", f"{intraPeriod[j]}", "--EnMultiThread", "0","-e",encodingArg,"-w" ,width, "-h", height]
             subprocess.run(commandArgs, capture_output=True, text=True, cwd=os.getcwd())
         else:
             print(f"Data for qp: {qps[i]} - inter: {intraPeriod[j]} exists skipping..")
@@ -114,13 +122,13 @@ for qp in qps:
         dataFrame = pd.read_csv(csvFilename, sep=";", decimal=".")
         psnr = dataFrame['AvgPSNR'].iloc[-1]
         print(f"avg psnr {psnr}")
-        binPath = f"../../results/{name}_compCIF_{qp}_{qp}_{intra}_{enc_suffix}.bin"
+        binPath = f"../../results/{name}_comp{format.upper()}_{qp}_{qp}_{intra}_{enc_suffix}.bin"
         try:
             size = os.path.getsize(binPath) * 8
         except Exception as e:
             print(f"Error reading file {binPath}: {e}")
             size = 0
-        mbps = round((size / 10) / (1000**2), 2)
+        mbps = round((size / (nFrames/fps)) / (1000**2), 2)
         bitrate[f'bitrate_{intra}'].append(mbps)
         psnrs[f'psnr_{intra}'].append(psnr)
 

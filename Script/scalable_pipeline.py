@@ -15,13 +15,14 @@ frame_width_qcif = 176
 frame_height_qcif = 144
 nb_frames = 300
 output_dir = "scalable_output"
-exec_type = 'Debug'
+# exec_type = 'Debug'
+exec_type = 'Release'
 mpeg1_executable = f"../../build/{exec_type}/ICSPCodec"
 qp_value = 16
 intra_period = 8
 
 # === files ===
-data_dir = "../../data"
+data_dir = "../ICSPCodec/data"
 input_yuv_cif = os.path.join(data_dir,"table.yuv")
 # === folder ===
 frames_cif = os.path.join(output_dir, "frames_cif")

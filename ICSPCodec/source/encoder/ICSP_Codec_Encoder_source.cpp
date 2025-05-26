@@ -25,6 +25,19 @@ struct HuffNode {
 	HuffNode(HuffNode* l, HuffNode* r) : value(-1), freq(l->freq + r->freq), left(l), right(r) {}
 };
 
+Statistics::Statistics(const int nframe) {
+	frameCount = nframe;
+	psnr = new double[nframe+1];
+	totalAcBits = new unsigned[nframe];
+	totalDcBits = new unsigned[nframe];
+	totalMvBits = new unsigned[nframe];
+	totalEntropyBits= new unsigned[nframe];
+}
+
+Statistics::~Statistics() {
+	delete[] psnr, totalAcBits,totalDcBits, totalMvBits,totalEntropyBits;
+}
+
 // Comparator for priority queue
 struct CompareNode {
 	bool operator()(HuffNode* a, HuffNode* b) {
@@ -153,7 +166,7 @@ void computePsnr(FrameData* frames,const int nframes,const int width, const int 
 void writeFrameStats(const Statistics &stats, char* fname, int intra_period, int QstepDC, int QstepAC){
 	char fileName[256];
 
-	// File naming scheme original file name _ Qp _ Qp _ Intraperiod 
+	// File naming scheme original file name _ Qp _ Qp _ Intraperiod_encoder(0: original, 1: abac, 2: huffman, 3: cabac)
 	sprintf(fileName, "%s/%s_%d_%d_%d_%d.csv",resultDirectory,fname,QstepDC,QstepAC,intra_period,static_cast<int>(EC));
 	FILE *csv = fopen(fileName, "w");
 	if (!csv) {
@@ -5057,12 +5070,14 @@ void makebitstream(FrameData* frames, int nframes, int height, int width, int Qs
 	// std::cout << (EC == EntropyCoding::Huffman ? "HF" : "Not HF") << std::endl;
 	headerinit(hd, height, width, QstepDC, QstepAC, intraPeriod);
 	char compCIFfname[256];
-	sprintf(compCIFfname, "%s/%s_compCIF_%d_%d_%d_%d.bin", resultDirectory, filename, QstepDC, QstepAC, intraPeriod,static_cast<int>(EC));
+	char format[8];
+	sprintf(format,"%s",((width == 352) ? "CIF" : ((width < 352) ? "QCIF" : "4CIF")));
+	sprintf(compCIFfname, "%s/%s_comp%s_%d_%d_%d_%d.bin", resultDirectory, filename,format, QstepDC, QstepAC, intraPeriod,static_cast<int>(EC));
 	#pragma pack(push, 1)
 	FILE* fp = fopen(compCIFfname, "wb");
 	if(fp==NULL)
 	{
-		cout << "fail to open compCIF.bin" << endl;
+		cout << "fail to open "<< compCIFfname << endl;
 		exit(-1);
 	}
 	fwrite(&hd, sizeof(header), 1, fp);
@@ -5083,18 +5098,22 @@ void makebitstream(FrameData* frames, int nframes, int height, int width, int Qs
 	{
 		int cntbits = 0;
 		// Size of 8 bits (1 byte) for every pixel
-		int maxbits = frames->splitHeight * frames->splitWidth * frames->blocks->blocksize1 * frames->blocks->blocksize1 * 8 * nframes * 8;
+		int maxbits = frames->splitHeight * frames->splitWidth * frames->blocks->blocksize1 * frames->blocks->blocksize1 * nframes * 8;
+		if (nframes <= 480 && nframes > 300) maxbits *= 4;
+		else if (nframes <= 300)maxbits *= 6;
+		// if (nframes > 480) maxbits4 /= ;
 		// Allocate this number in bytes
 		unsigned char* tempFrame = (unsigned char*)malloc(sizeof(unsigned char)*(maxbits/8));
 		uint8_t* tempFrameEnd = tempFrame + (maxbits/8);
 		if(tempFrame==NULL)
 		{
-			cout << "fail to allocate memory in makebitstream" << endl;
+			cout << "fail to allocate memory in makebitstream INTER" << endl;
 			exit(-1);
 		}
 
 		for(int n=0; n<nframes; n++)
 		{
+			printf("starting frame: %d encoding type %s ..\n",n, n%intraPeriod==0 ? "I" : "P") ;
 			x264_cabac_t cb;
 			if (EC == EntropyCoding::Cabac){
 				int slice_type = (n % intraPeriod == 0) ? SLICE_TYPE_I : SLICE_TYPE_P;
@@ -5113,7 +5132,7 @@ void makebitstream(FrameData* frames, int nframes, int height, int width, int Qs
 				else interBody(frames[n], tempFrame, cntbits, dcCoder, acCoder, mvCoder, stats);
 				// cout << "inter frame bits: " << cntbits << endl;				
 			}
-
+			printf("frame: %d encoded..\n",n);
 			if (EC == EntropyCoding::Cabac){
 				// Terminate & flush CABAC
         		x264_cabac_encode_terminal(&cb);
@@ -5159,8 +5178,8 @@ void allintraBodyCabac(FrameData* frames, int nframes, int QstepDC, FILE* fp, St
     int totalblck = frames->nblocks16;
     int nblock8   = frames->nblocks8;
     int maxbytes  = frames->splitHeight * frames->splitWidth * frames->blocks->blocksize1 *
-                    frames->blocks->blocksize1 * 8 * nframes * 2; // estimate in bytes
-
+                    frames->blocks->blocksize1 * 8 * nframes; // estimate in bytes
+	if (nframes <= 480) maxbytes *= 2;
     // Allocate output buffer
     uint8_t* frame = (uint8_t*)malloc(sizeof(uint8_t) * maxbytes);
     if (frame == NULL) {
@@ -5273,7 +5292,9 @@ void allintraBody(FrameData* frames, int nframes, FILE* fp, evx::entropy_coder& 
 	int totalblck = frames->nblocks16;
 	int nblock8   = frames->nblocks8;
 	int idx       = 0;
-	int maxbits   = frames->splitHeight * frames->splitWidth * frames->blocks->blocksize1 * frames->blocks->blocksize1 * 8 * nframes * 6; // Y ä�θ� ����
+	int maxbits = frames->splitHeight * frames->splitWidth * frames->blocks->blocksize1 * frames->blocks->blocksize1 * nframes * 8;
+	if (nframes <= 480 && nframes > 300) maxbits *= 4;
+	else if (nframes <= 300)maxbits *= 6;
 	
 	int cntbits   = 0;
 	int DCbits    = 0;
@@ -5822,9 +5843,10 @@ void interBody(FrameData& frm, unsigned char* tempFrame, int& cntbits, evx::entr
 	unsigned char* DCResult = NULL;
 	unsigned char* ACResult = NULL;
 	unsigned char* MVResult = NULL;
-	
+	if(frm.numOfFrame == 138) printf("1; total byte: %d\n", cntbits/8);
 	for(int nblck16=0; nblck16<totalblck; nblck16++)
 	{
+		if(frm.numOfFrame == 138) printf("2; total byte: %d\n", cntbits/8);
 		BlockData& bd = frm.blocks[nblck16];
 		
 		(tempFrame[cntbits++/8] <<= 1) |= 1;  // mv modeflag
@@ -5837,7 +5859,7 @@ void interBody(FrameData& frm, unsigned char* tempFrame, int& cntbits, evx::entr
 		for(int n=0; n<xMVbits+yMVbits; n++)
 				(tempFrame[cntbits++/8]<<=1) |= MVResult[n];
 		free(MVResult);
-
+		if(frm.numOfFrame == 138) printf("3; total byte: %d\n", cntbits/8);
 		if (stats)
 			stats->totalMvBits[frm.numOfFrame] += xMVbits + yMVbits;
 
@@ -5860,7 +5882,7 @@ void interBody(FrameData& frm, unsigned char* tempFrame, int& cntbits, evx::entr
 			if (stats) {
 				stats->totalDcBits[frm.numOfFrame] += DCbits;
 			}
-				
+			if(frm.numOfFrame == 138) printf("4; total byte: %d\n", cntbits/8);
 			(tempFrame[cntbits++/8]<<=1) |= bd.interACflag[nblck8]; // acflag 1bit
 			if(bd.interACflag[nblck8] == 1)
 			{
@@ -5887,7 +5909,7 @@ void interBody(FrameData& frm, unsigned char* tempFrame, int& cntbits, evx::entr
 			}
 		}
 		//cout << "Yframe bits: " << cntbits << endl;
-
+		if(frm.numOfFrame == 138) printf("666: total byte: %d\n", cntbits/8);
 		// Cb Cr 8x8 ����
 		CBlockData& cbbd = frm.Cbblocks[nblck16];
 		CBlockData& crbd = frm.Crblocks[nblck16];

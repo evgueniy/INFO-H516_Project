@@ -247,13 +247,12 @@ struct header
 #pragma pack(pop)
 
 struct Statistics {
-	// Assuming all videos are of 300 frames
-	static constexpr auto frameCount = 300;
-	double   psnr[frameCount+1];
-	unsigned totalAcBits[frameCount];
-	unsigned totalDcBits[frameCount];
-	unsigned totalMvBits[frameCount];
-	unsigned totalEntropyBits[frameCount];
+	int frameCount;
+	double*   psnr;
+	unsigned* totalAcBits;
+	unsigned* totalDcBits;
+	unsigned* totalMvBits;
+	unsigned* totalEntropyBits;
 
 	// Values range from 2 to 22
 	static constexpr auto histNbitsSize = 24;
@@ -268,8 +267,9 @@ struct Statistics {
 	unsigned acValuesHistogram[histValueSize];
 	unsigned mvxValuesHistogram[histValueSize];
 	unsigned mvyValuesHistogram[histValueSize];
+	Statistics(const int );
+	~Statistics();
 };
-
 class IcspCodec
 {
 public:

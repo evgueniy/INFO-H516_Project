@@ -5,6 +5,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import subprocess
 from bjontegaard import bd_rate, bd_psnr
+import re
 
 def plot_all_intra_subplots(results, intraPeriod: list):
     num_intra = len(intraPeriod)
@@ -87,8 +88,18 @@ for enc in encoders:
         print("Invalid encoding option. Must be one of original, cabac, huffman")
         sys.exit(1)
     encs[enc_lower] = enc_map[enc_lower]
-name = os.path.basename(yuvFile)
-name = name.split("_")[0]
+
+res = {"qcif": (str(352//2),str(288//2)), "cif": (str(352),str(288)), "4cif": (str(352*2),str(288*2)) }
+fileName = os.path.basename(yuvFile)
+pattern = r"(.*)_([4|Q|q]?cif)[(]*[a-zA-Z0-9]*[)]*_([0-9]+)f"
+match = re.search(pattern, fileName)
+name = match.group(1)
+format = match.group(2)
+width = res[format][0]
+height = res[format][1]
+nFrames = match.group(3)
+fps = 30 if match.group(2) == "cif" else 60
+
 print("Before change:", os.getcwd())
 os.chdir("../ICSPCodec/build/Release/")
 print("After change:", os.getcwd())
@@ -105,8 +116,8 @@ for enc in encs:
             csvFilename = f"../../results/{name}_{qps[i]}_{qps[i]}_{intraPeriod[j]}_{encs[enc]}.csv"
             if not os.path.exists(csvFilename):
                 print(f"Generating data for qp: {qps[i]} - inter: {intraPeriod[j]} - encoder: {enc}")
-                commandArgs = [f"{os.getcwd()}/ICSPCodec", "-i", yuvFile, "-n", "300", "-q", f"{qps[i]}",
-                               "--intraPeriod", f"{intraPeriod[j]}", "--EnMultiThread", "0", "-e", enc]
+                commandArgs = [f"{os.getcwd()}/ICSPCodec", "-i", yuvFile, "-n", nFrames, "-q", f"{qps[i]}",
+                               "--intraPeriod", f"{intraPeriod[j]}", "--EnMultiThread", "0", "-e", enc,"-w", width, "-h", height]
                 subprocess.run(commandArgs, capture_output=True, text=True, cwd=os.getcwd())
             else:
                 print(f"Data for qp: {qps[i]} - inter: {intraPeriod[j]} exists skipping..")
@@ -120,13 +131,13 @@ for enc in encs:
             dataFrame = pd.read_csv(csvFilename, sep=";", decimal=".")
             psnr = dataFrame["AvgPSNR"].iloc[-1]
             print(f"avg psnr {psnr}")
-            binPath = f"../../results/{name}_compCIF_{qp}_{qp}_{intra}_{encs[enc]}.bin"
+            binPath = f"../../results/{name}_comp{format.upper()}_{qp}_{qp}_{intra}_{encs[enc]}.bin"
             try:
                 size = os.path.getsize(binPath) * 8
             except Exception as e:
                 print(f"Error reading file {binPath}: {e}")
                 size = 0
-            mbps = round((size / 10) / (1000**2), 2)
+            mbps = round((size / (nFrames/fps)) / (1000**2), 2)
             bitrate[f"bitrate_{intra}"].append(mbps)
             psnrs[f"psnr_{intra}"].append(psnr)
     results[enc] = {"bitrate": bitrate, "psnr": psnrs}

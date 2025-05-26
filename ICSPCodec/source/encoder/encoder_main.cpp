@@ -39,12 +39,11 @@ int main(int argc, char *argv[])
     mkdir(resultDirectory, 0700);
 	}
 	printf("Resolution: %dx%d\n", options.width,options.height);
-	Statistics stats {};
+	Statistics stats {options.total_frames};
 
 	IcspCodec icspCodec;
 	icspCodec.init(options.total_frames, options.yuv_fname, options.width, options.height, options.QP_DC, options.QP_AC);
 	icspCodec.encoding(&options, &stats);
-
 	writeFrameStats(stats, filename, options.intra_period, options.QP_DC, options.QP_AC);
 	writeHistogramBitsizeStats(stats, filename, options.intra_period, options.QP_DC, options.QP_AC);
 	writeHistogramValueStats(stats, filename, options.intra_period, options.QP_DC, options.QP_AC);
