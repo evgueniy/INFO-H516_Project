@@ -27,6 +27,7 @@ int readHeader(IcspCodec& icC, header &hd, FILE* fp)
 	icC.QstepAC = hd.QP_AC;
 	icC.DPCMmode = hd.DPCMmode;
 	icC.intraPeriod = (hd.outro & 0x1F80) >> 7;
+	icC.intraPeriod = (icC.intraPeriod == 0) ? 1 : icC.intraPeriod;
 	icC.intraPredictionMode = (hd.outro & 0x0040) >> 6;
 
 
@@ -198,6 +199,7 @@ int readBlockData(IcspCodec& icC, FILE* fp)
 			prevbits = cntidx; // bits �� Ȯ���Ϸ���
 
 			// intra prediction 
+			printf("icC Intraperiod %d\n",icC.intraPeriod);
 			if(n%icC.intraPeriod==0)
 			{
 				// Y channel				
@@ -2151,6 +2153,8 @@ void allintraPredictionDecode(DFrameData *dframes, int nframes, int QstepDC, int
 		}
 	}
 }
+
+void allintraPredictionDecodeCabac(DFrameData *dframes, int nframes, int QstepDC, int QstepAC) {}
 void intraPredictionDecode(DFrameData& dfrm, int QstepDC, int QstepAC)
 {
 	int totalblck   = dfrm.nblocks16;
@@ -4473,25 +4477,25 @@ void get16block(unsigned char* img, unsigned char *dst[16], int y0, int x0, int 
 }
 
 /* check result function */
-void checkResultFrames(DFrameData* frm, int width, int height, int nframe, int predtype, int chtype)
+void checkResultFrames(DFrameData* frm, int width, int height, int nframe, int predtype, int chtype,char* imgfname)
 {
 	FILE* output_fp;	
 
 	char output_pred_name[256]; 
 	if(predtype == INTRA)
-		sprintf(output_pred_name, "check_test_intra");
+		sprintf(output_pred_name, imgfname);
 	else if(predtype == INTER)
-		sprintf(output_pred_name, "check_test_inter");
+		sprintf(output_pred_name, imgfname);
 
-	char output_ch_name[256];
-	if(chtype == SAVE_Y)
-		sprintf(output_ch_name, "_y.yuv");
-	else if(chtype == SAVE_YUV)
-		sprintf(output_ch_name, "_yuv.yuv");
+	// char output_ch_name[256];
+	// if(chtype == SAVE_Y)
+	// 	sprintf(output_ch_name, "_y.yuv");
+	// else if(chtype == SAVE_YUV)
+	// 	sprintf(output_ch_name, "_yuv.yuv");
 
 
 	char output_fname[256];
-	sprintf(output_fname, "%s%s", output_pred_name, output_ch_name);
+	sprintf(output_fname, "%s", output_pred_name);
 
 	output_fp = fopen(output_fname, "wb");
 	if(output_fp==NULL)

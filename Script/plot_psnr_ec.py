@@ -138,7 +138,7 @@ for enc in encs:
             except Exception as e:
                 print(f"Error reading file {binPath}: {e}")
                 size = 0
-            mbps = round((size / (nFrames/fps)) / (1000**2), 2)
+            mbps = round((size / (int(nFrames)/fps)) / (1000**2), 2)
             bitrate[f"bitrate_{intra}"].append(mbps)
             psnrs[f"psnr_{intra}"].append(psnr)
     results[enc] = {"bitrate": bitrate, "psnr": psnrs}

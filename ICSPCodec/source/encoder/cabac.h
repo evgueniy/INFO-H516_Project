@@ -30,6 +30,7 @@
 extern "C" {
 #endif
 void x264_cabac_init();
+#include <cstring>
 #ifndef BIT_DEPTH
 #define BIT_DEPTH 255
 #endif
