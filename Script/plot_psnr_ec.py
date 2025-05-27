@@ -117,7 +117,7 @@ for enc in encs:
             csvFilename = f"../../results/{name}_{qps[i]}_{qps[i]}_{intraPeriod[j]}_{encs[enc]}.csv"
             if not os.path.exists(csvFilename):
                 print(f"Generating data for qp: {qps[i]} - inter: {intraPeriod[j]} - encoder: {enc}")
-                commandArgs = [f"{os.getcwd()}/ICSPCodec", "-i", yuvFile, "-n", nFrames, "-q", f"{qps[i]}",
+                commandArgs = [f"{os.getcwd()}/ICSPCodec", "-i", yuvFile, "-n", str(nFrames), "-q", f"{qps[i]}",
                                "--intraPeriod", f"{intraPeriod[j]}", "--EnMultiThread", "0", "-e", enc,"-w", width, "-h", height]
                 subprocess.run(commandArgs, capture_output=True, text=True, cwd=os.getcwd())
             else:

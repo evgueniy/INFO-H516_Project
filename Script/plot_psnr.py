@@ -91,7 +91,7 @@ width = res[format][0]
 height = res[format][1]
 nFrames = int(match.group(3))
 fps = 30 if match.group(2) == "cif" else 60
-exec_type = "Debug"
+exec_type = "Release"
 # changing to avoid building proper path in c code :) 
 print("Before change:", os.getcwd())
 os.chdir(f"../ICSPCodec/build/{exec_type}/")
@@ -109,7 +109,7 @@ for i in range(len(qps)):
         csvFilename = f"../../results/{name}_{qps[i]}_{qps[i]}_{intraPeriod[j]}_{enc_suffix}.csv"
         if not os.path.exists(csvFilename):
             print(f"Generating data for qp: {qps[i]} - inter: {intraPeriod[j]} - encoder: {encodingArg} - nframes: {nFrames} - width: {width} - height: {height} ")
-            commandArgs = [f"{os.getcwd()}/ICSPCodec", "-i", yuvFile, "-n", nFrames, "-q", f"{qps[i]}", "--intraPeriod", f"{intraPeriod[j]}", "--EnMultiThread", "0","-e",encodingArg.lower(),"-w" ,width, "-h", height]
+            commandArgs = [f"{os.getcwd()}/ICSPCodec", "-i", yuvFile, "-n", str(nFrames), "-q", f"{qps[i]}", "--intraPeriod", f"{intraPeriod[j]}", "--EnMultiThread", "0","-e",encodingArg.lower(),"-w" ,width, "-h", height]
             subprocess.run(commandArgs, capture_output=True, text=True, cwd=os.getcwd())
         else:
             print(f"Data for qp: {qps[i]} - inter: {intraPeriod[j]} exists skipping..")
