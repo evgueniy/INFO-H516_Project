@@ -7,29 +7,50 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 from numpy.typing import NDArray
+import re
+import sys
 
 # === parameters ===
-frame_width_cif = 352
-frame_height_cif = 288
-frame_width_qcif = 176
-frame_height_qcif = 144
-nb_frames = 300
+res = {"qcif": (str(352//2),str(288//2)), "cif": (str(352),str(288)), "4cif": (str(352*2),str(288*2)) }
+# regex to capture name, res and nb of frames
+pattern = r"(.*)_([4|Q|q]?cif)[(]*[a-zA-Z0-9]*[)]*_([0-9]+)f" 
 output_dir = "scalable_output"
+yuv_name = sys.argv[1]
 # exec_type = 'Debug'
 exec_type = 'Release'
-mpeg1_executable = f"../../build/{exec_type}/ICSPCodec"
-qp_value = 16
-intra_period = 8
-
+# changing to avoid building proper path in c code :) 
+print("Before change:", os.getcwd())
+os.chdir(f"../ICSPCodec/build/{exec_type}/")
+print("After change:", os.getcwd())
+mpeg1_executable = f"./ICSPCodec"
+qp_value = sys.argv[2]
+intra_period = sys.argv[3]
+encoder = "original" if len(sys.argv) < 5 else sys.argv[4]
+print(f"Used encoder= {encoder}")
 # === files ===
-data_dir = "../ICSPCodec/data"
-input_yuv_cif = os.path.join(data_dir,"table.yuv")
+data_dir = "../../data"
+input_yuv_path = os.path.join(data_dir,yuv_name)
+
 # === folder ===
-frames_cif = os.path.join(output_dir, "frames_cif")
-frames_downscaled = os.path.join(output_dir, "frames_qcif")
-frames_decoded = os.path.join(output_dir, "frames_qcif_decoded")
-frames_upscaled = os.path.join(output_dir, "frames_qcif_upscaled")
-reconstructed_dir = os.path.join(output_dir, "reconstructed")
+cpath = os.path.join(data_dir, output_dir)
+frames_cif = os.path.join(cpath, "frames_cif")
+frames_downscaled = os.path.join(cpath, "frames_qcif")
+frames_decoded = os.path.join(cpath, "frames_qcif_decoded")
+frames_upscaled = os.path.join(cpath, "frames_qcif_upscaled")
+reconstructed_dir = os.path.join(cpath, "reconstructed")
+
+# === file info ===
+res = {"qcif": (352//2,288//2), "cif": (352,288), "4cif": (352*2,288*2) }
+match = re.search(pattern, yuv_name)
+name = match.group(1)
+og_format = match.group(2)
+down_format = "qcif" if og_format == "cif" else "cif"
+width = res[og_format][0]
+height = res[og_format][1]
+nb_frames = int(match.group(3))
+og_res = f"{width}x{height}"
+down_res = f"{width//2}x{height//2}"
+fps = 30 if match.group(2) == "cif" else 60
 
 def ensure_clean_dir(path):
     if os.path.exists(path):
@@ -37,7 +58,7 @@ def ensure_clean_dir(path):
     os.makedirs(path)
 
 # cleanup
-for folder in [output_dir, frames_cif, frames_downscaled, frames_decoded, frames_upscaled, reconstructed_dir]:
+for folder in [cpath, frames_cif, frames_downscaled, frames_decoded, frames_upscaled, reconstructed_dir]:
     ensure_clean_dir(folder)
 
 def rgb_to_y(img):
@@ -83,30 +104,31 @@ def displayGraph(psnr: list[NDArray[np.float64]]):
     
 # === pipeline ===
 
-print("Downscaling CIF...")
-# I leave the right file to convert etc to you
-qcif_yuv_input = os.path.join(output_dir, "base_qcif.yuv")
+print(f"Downscaling {og_format.upper()}...")
+downscaled_yuv_name = f"downscaled-{name}_{down_format}_{nb_frames}f.yuv"
+downscaled_yuv_input = os.path.join(cpath, downscaled_yuv_name)
+decode = f"_{qp_value}_{qp_value}_{intra_period}_decoded.yuv"
+subprocess.run(f'ffmpeg -f rawvideo -pix_fmt yuv420p -s {og_res} -i "{input_yuv_path}" -vf "scale={width//2}:{height//2}" -pix_fmt yuv420p -f rawvideo "{downscaled_yuv_input}"', shell=True, check=True)
 
-subprocess.run(f'ffmpeg -f rawvideo -pix_fmt yuv420p -s 352x288 -i "{input_yuv_cif}" -vf "scale=176:144" -pix_fmt yuv420p -f rawvideo "{qcif_yuv_input}"', shell=True, check=True)
+print(f"Encoding {down_format.upper()}...")
+downscaled_yuv_decoded = os.path.join(cpath, downscaled_yuv_name+decode)
+print(downscaled_yuv_decoded)
+subprocess.run(f"{mpeg1_executable} -i {downscaled_yuv_input} -n {nb_frames} -q {qp_value} --intraPeriod {intra_period} --EnMultiThread 0 -e {encoder} -h {height//2} -w {width//2}", shell=True, check=True)
 
-print("Encoding QCIF...")
-qcif_yuv_decoded = os.path.join(output_dir, "base_qcif.yuv_16_16_8_decoded.yuv")
-print(qcif_yuv_decoded)
-subprocess.run(f"{mpeg1_executable} -i {qcif_yuv_input} -n {nb_frames} -q {qp_value} --intraPeriod {intra_period} --EnMultiThread 0", shell=True, check=True)
+print(f"Upscaling {down_format.upper()}...")
+upscaled_yuv_name = f"upscaled-{name}_{og_format}_{nb_frames}f.yuv"
+upscaled_yuv_input = os.path.join(cpath,upscaled_yuv_name)
+subprocess.run(f'ffmpeg -s {down_res} -pix_fmt yuv420p -i {downscaled_yuv_decoded} -vf scale={width}:{height} -pix_fmt yuv420p {upscaled_yuv_input}', shell=True, check=True)
 
-print("Upscaling QCIF...")
-qcif_upscaled = os.path.join(output_dir,'table_upscaled.yuv')
-subprocess.run(f'ffmpeg -s 176x144 -pix_fmt yuv420p -i {qcif_yuv_decoded} -vf scale=352:288 -pix_fmt yuv420p {qcif_upscaled}', shell=True, check=True)
-
-print("Encoding CIF...")
-cif_yuv_decoded = os.path.join(data_dir, "table.yuv_16_16_8_decoded.yuv")
-print(cif_yuv_decoded)
-subprocess.run(f"{mpeg1_executable} -i {input_yuv_cif} -n {nb_frames} -q {qp_value} --intraPeriod {intra_period} --EnMultiThread 0", shell=True, check=True)
+print(f"Encoding {og_format.upper()}...")
+og_yuv_decoded = input_yuv_path + decode
+print(og_yuv_decoded)
+subprocess.run(f'{mpeg1_executable} -i "{input_yuv_path}" -n {nb_frames} -q {qp_value} --intraPeriod {intra_period} --EnMultiThread 0 -e {encoder} -h {height} -w {width}', shell=True, check=True)
 
 
-orig = getYValues(frame_height_cif,frame_width_cif,nb_frames,input_yuv_cif)
-upscaled = getYValues(frame_height_cif,frame_width_cif,nb_frames,qcif_upscaled)
-orig_dec = getYValues(frame_height_cif,frame_width_cif,nb_frames,cif_yuv_decoded)
+orig = getYValues(height,width,nb_frames,input_yuv_path)
+upscaled = getYValues(height,width,nb_frames,upscaled_yuv_input)
+orig_dec = getYValues(height,width,nb_frames,og_yuv_decoded)
 
 print("Creating and encoding enhancement layer (residuals)...")
 
@@ -115,8 +137,8 @@ residual = orig - upscaled
 residual_shifted = np.clip(residual + 128, 0, 255).astype(np.uint8)
 
 # === Save residuals as raw YUV420p ===
-residual_file = os.path.join(output_dir, "residuals.yuv")
-height, width = frame_height_cif, frame_width_cif
+residual_name = f"residuals-{name}_{og_format}_{nb_frames}f.yuv"
+residual_file = os.path.join(cpath, residual_name)
 with open(residual_file, "wb") as f:
     for i in range(nb_frames):
         y_plane = residual_shifted[:, :, i].astype(np.uint8)
@@ -127,11 +149,11 @@ with open(residual_file, "wb") as f:
         f.write(v_plane.tobytes())
 
 # === Encode residuals with your encoder ===
-encoded_residual_file = residual_file + f"_{qp_value}_{qp_value}_{intra_period}_decoded.yuv"
-subprocess.run(f"{mpeg1_executable} -i {residual_file} -n {nb_frames} -q {qp_value} --intraPeriod {intra_period} --EnMultiThread 0", shell=True, check=True)
+encoded_residual_file = residual_file + decode
+subprocess.run(f"{mpeg1_executable} -i {residual_file} -n {nb_frames} -q {qp_value} --intraPeriod {intra_period} --EnMultiThread 0 -e {encoder} -h {height} -w {width}" , shell=True, check=True)
 
 # === Decode and load residuals ===
-decoded_residual = getYValues(frame_height_cif, frame_width_cif, nb_frames, encoded_residual_file)
+decoded_residual = getYValues(height, width, nb_frames, encoded_residual_file)
 decoded_residual = decoded_residual.astype(np.float32) - 128  # Un-shift
 
 # === Final reconstruction ===

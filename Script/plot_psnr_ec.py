@@ -99,9 +99,10 @@ width = res[format][0]
 height = res[format][1]
 nFrames = match.group(3)
 fps = 30 if match.group(2) == "cif" else 60
-
+exec_type = "Debug"
+# changing to avoid building proper path in c code :) 
 print("Before change:", os.getcwd())
-os.chdir("../ICSPCodec/build/Release/")
+os.chdir(f"../ICSPCodec/build/{exec_type}/")
 print("After change:", os.getcwd())
 print(f"File: {yuvFile}\n--> Qp's: {qps} for inter values: [0, 8, 16, 32, 300]")
 yuvFile = f"../../data/{os.path.basename(yuvFile)}"

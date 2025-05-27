@@ -5843,10 +5843,8 @@ void interBody(FrameData& frm, unsigned char* tempFrame, int& cntbits, evx::entr
 	unsigned char* DCResult = NULL;
 	unsigned char* ACResult = NULL;
 	unsigned char* MVResult = NULL;
-	if(frm.numOfFrame == 138) printf("1; total byte: %d\n", cntbits/8);
 	for(int nblck16=0; nblck16<totalblck; nblck16++)
 	{
-		if(frm.numOfFrame == 138) printf("2; total byte: %d\n", cntbits/8);
 		BlockData& bd = frm.blocks[nblck16];
 		
 		(tempFrame[cntbits++/8] <<= 1) |= 1;  // mv modeflag
@@ -5859,7 +5857,6 @@ void interBody(FrameData& frm, unsigned char* tempFrame, int& cntbits, evx::entr
 		for(int n=0; n<xMVbits+yMVbits; n++)
 				(tempFrame[cntbits++/8]<<=1) |= MVResult[n];
 		free(MVResult);
-		if(frm.numOfFrame == 138) printf("3; total byte: %d\n", cntbits/8);
 		if (stats)
 			stats->totalMvBits[frm.numOfFrame] += xMVbits + yMVbits;
 
@@ -5882,7 +5879,6 @@ void interBody(FrameData& frm, unsigned char* tempFrame, int& cntbits, evx::entr
 			if (stats) {
 				stats->totalDcBits[frm.numOfFrame] += DCbits;
 			}
-			if(frm.numOfFrame == 138) printf("4; total byte: %d\n", cntbits/8);
 			(tempFrame[cntbits++/8]<<=1) |= bd.interACflag[nblck8]; // acflag 1bit
 			if(bd.interACflag[nblck8] == 1)
 			{
@@ -5909,7 +5905,6 @@ void interBody(FrameData& frm, unsigned char* tempFrame, int& cntbits, evx::entr
 			}
 		}
 		//cout << "Yframe bits: " << cntbits << endl;
-		if(frm.numOfFrame == 138) printf("666: total byte: %d\n", cntbits/8);
 		// Cb Cr 8x8 ����
 		CBlockData& cbbd = frm.Cbblocks[nblck16];
 		CBlockData& crbd = frm.Crblocks[nblck16];
