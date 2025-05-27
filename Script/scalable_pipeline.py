@@ -87,7 +87,7 @@ def getPsnr(origin: np.ndarray, comp: np.ndarray ) -> np.ndarray:
     return psnr
 
 def displayGraph(psnr: list[NDArray[np.float64]]):
-    labels = ["Original","Upscaled", "Reconstructed"]
+    labels = ["Original","Low Res", "High Res", "Upscaled"]
     nframes = psnr[0].shape[-1]
     plt.figure(figsize=(10, 6))
     x = np.arange(nframes)
@@ -127,8 +127,14 @@ subprocess.run(f'{mpeg1_executable} -i "{input_yuv_path}" -n {nb_frames} -q {qp_
 
 
 orig = getYValues(height,width,nb_frames,input_yuv_path)
-upscaled = getYValues(height,width,nb_frames,upscaled_yuv_input)
 orig_dec = getYValues(height,width,nb_frames,og_yuv_decoded)
+
+downscaled = getYValues(height//2,width//2,nb_frames,downscaled_yuv_input)
+downscaled_dec = getYValues(height//2,width//2,nb_frames,downscaled_yuv_decoded)
+
+upscaled = getYValues(height,width,nb_frames,upscaled_yuv_input)
+
+
 
 print("Creating and encoding enhancement layer (residuals)...")
 
@@ -162,10 +168,11 @@ recon = np.clip(upscaled + decoded_residual, 0, 255)
 
 # === PSNR Comparison ===
 psnr_orig = getPsnr(orig, orig_dec)
+psnr_downscaled = getPsnr(downscaled, downscaled_dec)
 psnr_upscaled = getPsnr(orig, upscaled)
 psnr_reconstructed = getPsnr(orig, recon)
 for i in range(nb_frames):
-    print(f'frame {i} : original = {psnr_orig[i]:.2f} dB | upscaled={psnr_upscaled[i]:.2f} dB | recon={psnr_reconstructed[i]:.2f} dB')
+    print(f'frame {i} : original = {psnr_orig[i]:.2f} dB | downscaled={psnr_downscaled[i]:.2f} dB | recon={psnr_reconstructed[i]:.2f} dB | upscaled={psnr_upscaled[i]:.2f} dB')
 
 # === Plot results ===
-displayGraph([psnr_orig, psnr_upscaled, psnr_reconstructed])
+displayGraph([psnr_orig, psnr_downscaled, psnr_reconstructed, psnr_upscaled])
