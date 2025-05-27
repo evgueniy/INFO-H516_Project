@@ -1,5 +1,0 @@
-decoding time: 3.1851(s) PSNR: inf QPDC: 2  QPAC: 2 Period: 1
-decoding time: 14.0965(s) PSNR: inf QPDC: 42  QPAC: 42 Period: 1
-decoding time: 28.6406(s) PSNR: inf QPDC: 42  QPAC: 42 Period: 1
-decoding time: 29.8311(s) PSNR: inf QPDC: 42  QPAC: 42 Period: 1
-decoding time: 29.5798(s) PSNR: inf QPDC: 42  QPAC: 42 Period: 8
