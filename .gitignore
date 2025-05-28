@@ -11,6 +11,7 @@ ICSPCodec/build/Release/ICSPCodec
 ICSPCodec/results/
 ICSPCodec/source/decoder/*.txt
 ICSPCodecDecoder
+**/__pycache__/
 *.yuv
 *.bin
 *.png
