@@ -12,7 +12,7 @@ CXXFLAGS = -g -Wall -std=c++11 -I. -I../encoder
 SOURCES = decode.cpp ICSP_Codec_Decoder_source.cpp ../encoder/cabac.c
 
 # The name of the final executable
-EXECUTABLE = decode
+EXECUTABLE = ICSPCodecDecoder
 
 # The default target
 all: $(EXECUTABLE)

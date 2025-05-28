@@ -10,7 +10,7 @@ ICSPCodec/build/Release/Makefile
 ICSPCodec/build/Release/ICSPCodec
 ICSPCodec/results/
 ICSPCodec/source/decoder/*.txt
-ICSPCodec/source/decoder/decode
+ICSPCodecDecoder
 *.yuv
 *.bin
 *.png
