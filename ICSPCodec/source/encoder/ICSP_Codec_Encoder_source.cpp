@@ -291,18 +291,19 @@ void writeMotionVectors(Statistics& stats, char* fname, int intraPeriod) {
 		sprintf(line, "%d;%d;%d;%d;%d\n", 0, posX, posY, dirX, dirY);
 		fputs(line, csv);
 	}
-
-	// Remaining blocks
-	for (int frm = 1; frm < frmCount; frm++) {
-		// Take the mv vectors of the previous frame (unless first which is all 0)
-		int frmIdx = frm % intraPeriod == 0 ? frm - 1 : frm;
-		for(int i = 0; i< blkCount; i++){
-			int posX = stats.mvPosX[frmIdx][i];
-			int posY = stats.mvPosY[frmIdx][i];
-			int dirX = stats.mvDirX[frmIdx][i];
-			int dirY = stats.mvDirY[frmIdx][i];
-			sprintf(line, "%d;%d;%d;%d;%d\n", frm, posX, posY, dirX, dirY);
-			fputs(line, csv);
+	if (intraPeriod > 1){
+		// Remaining blocks
+		for (int frm = 1; frm < frmCount; frm++) {
+			// Take the mv vectors of the previous frame (unless first which is all 0)
+			int frmIdx = frm % intraPeriod == 0 ? frm - 1 : frm;
+			for(int i = 0; i< blkCount; i++){
+				int posX = stats.mvPosX[frmIdx][i];
+				int posY = stats.mvPosY[frmIdx][i];
+				int dirX = stats.mvDirX[frmIdx][i];
+				int dirY = stats.mvDirY[frmIdx][i];
+				sprintf(line, "%d;%d;%d;%d;%d\n", frm, posX, posY, dirX, dirY);
+				fputs(line, csv);
+			}
 		}
 	}
 	fclose(csv);
