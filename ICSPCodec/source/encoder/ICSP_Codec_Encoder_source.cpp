@@ -6765,7 +6765,7 @@ unsigned char* ACentropy(int* reordblck, int& nbits, evx::entropy_coder& encoder
 	
 }
 
-unsigned char* ACentropyHuffman(int* reordblck, int& nbits) {
+unsigned char* ACentropyHuffman(int* reordblck, int& nbits, Statistics* stats) {
 	const int length = 63;
 	unordered_map<int, int> freq;
 
@@ -6805,6 +6805,13 @@ unsigned char* ACentropyHuffman(int* reordblck, int& nbits) {
 
 		if (absval != 0)
 			bitstream.push_back(sign);
+
+		// Record statistics for histograms
+		if (stats) {
+			int bitsize = absval == 0 ? code.length() : code.length() + 1;
+			stats->acNbitsHistogram[bitsize] += 1;
+			stats->acValuesHistogram[min(absval, 2048)] += 1;
+		}
 	}
 
 	nbits = bitstream.size();
