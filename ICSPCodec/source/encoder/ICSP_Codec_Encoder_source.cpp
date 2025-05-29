@@ -178,7 +178,7 @@ void writeHistogramBitsizeStats(const Statistics &stats, char* fname, int intra_
 	char fileName[256];
 
 	// File naming scheme original file name _ Qp _ Qp _ Intraperiod 
-	sprintf(fileName, "%s/hist_bitsize_%s_%d_%d_%d.csv",resultDirectory,fname,QstepDC,QstepAC,intra_period);
+	sprintf(fileName, "%s/hist_bitsize_%s_%d_%d_%d_%d.csv",resultDirectory,fname,QstepDC,QstepAC,intra_period,static_cast<int>(EC));
 	FILE *csv = fopen(fileName, "w");
 	if (!csv) {
         perror("Error opening the CSV file");
@@ -215,7 +215,7 @@ void writeHistogramValueStats(const Statistics &stats, char* fname, int intra_pe
 	char fileName[256];
 
 	// File naming scheme original file name _ Qp _ Qp _ Intraperiod 
-	sprintf(fileName, "%s/hist_value_%s_%d_%d_%d.csv",resultDirectory,fname,QstepDC,QstepAC,intra_period);
+	sprintf(fileName, "%s/hist_value_%s_%d_%d_%d_%d.csv",resultDirectory,fname,QstepDC,QstepAC,intra_period,static_cast<int>(EC));
 	FILE *csv = fopen(fileName, "w");
 	if (!csv) {
         perror("Error opening the CSV file");
