@@ -6760,7 +6760,7 @@ unsigned char* ACentropyOriginal(int* reordblck, int& nbits,Statistics* stats ){
 unsigned char* ACentropy(int* reordblck, int& nbits, evx::entropy_coder& encoder, Statistics* stats)
 {
 	if (EC == EntropyCoding::Abac) return ACentropyCabac(reordblck, nbits, encoder, stats);
-	else if (EC == EntropyCoding::Huffman)  return ACentropyHuffman(reordblck, nbits);
+	else if (EC == EntropyCoding::Huffman)  return ACentropyHuffman(reordblck, nbits, stats);
 	return ACentropyOriginal(reordblck, nbits,stats);
 	
 }
