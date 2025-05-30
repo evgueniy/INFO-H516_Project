@@ -1,5 +1,6 @@
 #include "ICSP_Codec_Encoder.h"
 #include "ICSP_thread.h"
+#include <cstring>
 #include <pthread.h>
 
 #include "abac/bitstream.h"
@@ -7381,7 +7382,7 @@ void checkResultYUV(unsigned char *Y, unsigned char *Cb, unsigned char *Cr, int 
 }
 void checkResultFrames(FrameData* frm,char* fname, int width, int height, int nframe,int QstepDC, int QstepAC, int intraPeriod, int predtype, int chtype)
 {
-	FILE* output_fp;
+	FILE* output_fp, *output_fp_error_image;
 
 	char output_fname[256];
 	sprintf(output_fname, "%s_%d_%d_%d_decoded.yuv" ,fname,QstepDC,QstepAC,intraPeriod);
@@ -7393,29 +7394,95 @@ void checkResultFrames(FrameData* frm,char* fname, int width, int height, int nf
 		return;
 	}
 
+	sprintf(output_fname, "%s_%d_%d_%d_errors.yuv" ,fname,QstepDC,QstepAC,intraPeriod);
+
+	output_fp_error_image = fopen(output_fname, "wb");
+	if(output_fp==NULL)
+	{
+		cout << "fail to save yuv" << endl;
+		return;
+	}
+
+	int yFrameSize = height*width;
+	int yFrameBytes = sizeof(unsigned char)*yFrameSize;
+	int uvFrameSize = (height/2)*(width/2);
+	int uvFrameBytes = sizeof(unsigned char)*uvFrameSize;
+
+	auto errorY = (unsigned char**) malloc(nframe*sizeof(unsigned char**));
+	auto errorU = (unsigned char**) malloc(nframe*sizeof(unsigned char**));
+	auto errorV = (unsigned char**) malloc(nframe*sizeof(unsigned char**));
+	for (int i = 0; i < nframe; i++) {
+		errorY[i] = (unsigned char*) malloc(yFrameBytes);
+		errorU[i] = (unsigned char*) malloc(uvFrameBytes);
+		errorV[i] = (unsigned char*) malloc(uvFrameBytes);
+	}
+
+	// First frame does not have an error image
+	memset(errorY[0], 0, yFrameBytes);
+	memset(errorU[0], 128, uvFrameBytes);
+	memset(errorV[0], 128, uvFrameBytes);
+
+	// Compute the error frames
+	for (int i = 1; i < nframe; i++) {
+		// Y
+		for (int y = 0; y < height; y++) {
+			for (int x = 0; x < width; x++) {
+				const int idx = y*width + x;
+				// We convert to int and back to unsigned char to avoid overflows
+				unsigned char errorYVal = (unsigned char) abs((int)frm[i].reconstructedY[idx] - (int)frm[i].Y[idx]);
+				errorY[i][idx] = errorYVal;
+			}
+		}
+		// UV
+		for (int y = 0; y < height / 2; y++) {
+			for (int x = 0; x < width / 2; x++) {
+				const int idx = y*width/2 + x;
+				// We convert to int and back to unsigned char to avoid overflows
+				unsigned char errorUVal = (unsigned char) abs((int)frm[i].reconstructedCb[idx] - (int)frm[i].Cb[idx]);
+				unsigned char errorVVal = (unsigned char) abs((int)frm[i].reconstructedCr[idx] - (int)frm[i].Cr[idx]);
+				errorU[i][idx] = 128;
+				errorV[i][idx] = 128;
+			}
+		}
+	}
+
 	if(chtype==SAVE_Y)	// Y�θ� �� ���� �����
 	{
 		for(int i=0; i<nframe; i++)
 		{
-			fwrite(frm[i].reconstructedY, sizeof(unsigned char)*height*width, 1, output_fp);
+			// Reconstructed YUV
+			fwrite(frm[i].reconstructedY, yFrameBytes, 1, output_fp);
+			// Difference YUV
+			fwrite(errorY[i], yFrameBytes, 1, output_fp_error_image);
 		}
 	}
 	else if(chtype==SAVE_YUV)
 	{
 		for(int i=0; i<nframe; i++)
 		{
-			fwrite(frm[i].reconstructedY,  sizeof(unsigned char)*height*width, 1, output_fp);
-			fwrite(frm[i].reconstructedCb,  sizeof(unsigned char)*(height/2)*(width/2), 1, output_fp);
-			fwrite(frm[i].reconstructedCr,  sizeof(unsigned char)*(height/2)*(width/2), 1, output_fp);
+
+			// Reconstructed YUV
+			fwrite(frm[i].reconstructedY,  yFrameBytes, 1, output_fp);
+			fwrite(frm[i].reconstructedCb,  uvFrameBytes, 1, output_fp);
+			fwrite(frm[i].reconstructedCr,  uvFrameBytes, 1, output_fp);
+			// Difference YUV
+			fwrite(errorY[i],  yFrameBytes, 1, output_fp_error_image);
+			fwrite(errorU[i],  uvFrameBytes, 1, output_fp_error_image);
+			fwrite(errorV[i],  uvFrameBytes, 1, output_fp_error_image);
 		}
 	}
+
 	fclose(output_fp);
+	fclose(output_fp_error_image);
 
 	for(int i=0; i<nframe; i++)
 	{
 		free(frm[i].reconstructedY);
 		free(frm[i].reconstructedCb);
 		free(frm[i].reconstructedCr);
+		free(errorY[i]);
+		free(errorU[i]);
+		free(errorV[i]);
 	}
 }
 void checkResultRestructedFrames(FrameData* frm, int width, int height, int nframe, int type)
