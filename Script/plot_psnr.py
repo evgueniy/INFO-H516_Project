@@ -56,7 +56,7 @@ def plotDataFrame(dataFrame, intraPeriod: list,codec):
 def main(path: str, qps: list[int,], entropyCoder: str) -> None:
     # == setup == 
     file = utils.YUV(path)
-    mode = "Release"
+    mode = "Debug"
     ICSP = utils.ICSPCodec(entropyCoder, mode)
     ICSP.getICSPWorkDir()
     intraPeriod = [0,8,16,32,300]
