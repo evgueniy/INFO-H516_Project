@@ -1,5 +1,6 @@
 import os
 import sys
+import subprocess
 
 # import tempfile
 import pandas as pd
@@ -25,25 +26,43 @@ def generate_mv_video(mv_path, dst_dir):
         nx = mv["MvDirX"]
         ny = mv["MvDirY"]
 
-        # nx *= -1
-        # ny *= -1
-        # nx = mv["MvDirX"] / (np.sqrt(mv["MvDirX"]) ** 2 + np.sqrt(mv["MvDirY"] ** 2))
-        # ny = mv["MvDirY"] / (np.sqrt(mv["MvDirX"]) ** 2 + np.sqrt(mv["MvDirY"] ** 2))
         ax.quiver(mv["MvPosX"], mv["MvPosY"], nx, ny, angles="xy", width=0.002, scale_units="xy", scale=.8)
         out_name = dst_dir.joinpath(f"{frm:03d}-mv.png")
         plt.savefig(out_name, transparent=True, bbox_inches="tight", pad_inches=0)
-        # plt.show()
+
+
+def main(video_name):
+    video_file = f"{video_name}_cif(352X288)_300f.yuv"
+    mv_file = f"mv_{video_name}_.csv"
+
+    print(f"-- Generating motion vectors for {video_name} (file {video_file})")
+
+    print("-- Running the encoder to get motion vectors")
+    os.chdir("../ICSPCodec/build/Debug")
+    subprocess.run(f"./ICSPCodec -i \"../../data/{video_file}\" -n 300 -q 16 --intraPeriod 8", shell=True, check=True)
+
+    out_dir = f"../ICSPCodec/results/mv_{video_name}"
+    print(f"-- Generating images in {out_dir}")
+    os.chdir("../../../Script")
+    if not os.path.exists(out_dir):
+        os.mkdir(out_dir)
+    generate_mv_video(f"../ICSPCodec/results/mv_{video_name}_.csv", out_dir)
+
+    print("-- Rescaling original YUV video")
+    base_file = f"{out_dir}/base.mp4"
+    subprocess.run(f"ffmpeg -framerate 30 -s 352x288 -i \"../ICSPCodec/data/{video_file}\" -vf scale=852x616 \"{base_file}\"", shell=True, check=True)
+
+    print("-- Combining videos")
+    out_file = f"{out_dir}/out.mp4"
+    subprocess.run(f"ffmpeg -i \"{base_file}\" -framerate 30 -i \"{out_dir}/%3d-mv.png\" -filter_complex \"blend=multiply\" -c:v libx264 -pix_fmt yuv420p \"{out_file}\"", shell=True, check=True)
+
+    subprocess.run(f"xdg-open {out_file}", shell=True, check=True)
 
 
 if __name__ == "__main__":
-    if len(sys.argv) != 3:
-        print("[Error] Please provide:\n\t- a file with the motion vectors\n\t- a directory where the images should be saved.")
+    if len(sys.argv) != 2:
+        print("[Error] Please provide:\n\t- a video file (just the name, like `table`).")
         exit(1)
 
-    mv_path = sys.argv[1]
-    dst_dir = sys.argv[2]
-    if not os.path.exists(mv_path) or not os.path.exists(dst_dir):
-        print("[Error] One of the provided paths doesn’t exist.")
-        exit(1)
-
-    generate_mv_video(mv_path, dst_dir)
+    file_name = sys.argv[1]
+    main(file_name)

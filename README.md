@@ -157,7 +157,23 @@ where we have the following arguments:
 
 ### Launch pipeline to show motion vectors
 
-TODO
+```bash
+python3 motion_vectors.py table
+```
+
+where we have the following argument:
+
+- Name of a YUV video, without prefix nor suffix (here `table`)
+
+### Launch pipeline to show motion vectors with FFMPEG
+
+```bash
+python3 motion_vectors_ffmpeg.py table
+```
+
+where we have the following argument:
+
+- Name of a YUV video, without prefix nor suffix (here `table`)
 
 ## Credits
 
