@@ -1426,11 +1426,7 @@ static const int bypass_lut[16] =
 
 void x264_cabac_encode_ue_bypass( x264_cabac_t *cb, int exp_bits, int val )
 {
-    // This corrected version implements standard UEG for exp_bits = 0,
-    // using the arithmetically coded P=0.5 bypass bit encoder.
-    // It now correctly calculates the suffix.
     if (val < 0) {
-        // Or handle error appropriately
         return;
     }
 
@@ -1444,11 +1440,7 @@ void x264_cabac_encode_ue_bypass( x264_cabac_t *cb, int exp_bits, int val )
             temp >>= 1;
             k++;
         }
-    } else { 
-        // This case (val = MAX_UINT making code_num wrap to 0) is extreme.
-        // For val = 0, code_num = 1, k = 0.
     }
-// 
     // Encode k leading zeros
     for (int i = 0; i < k; i++) {
         x264_cabac_encode_bypass_c(cb, 0); // Uses the P=0.5 arithmetic bypass encoder
