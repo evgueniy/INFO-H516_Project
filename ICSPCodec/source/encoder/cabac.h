@@ -30,6 +30,9 @@
 extern "C" {
 #endif
 void x264_cabac_init();
+#ifdef ICSP_CODEC_DECODER_H
+#include <cstring>
+#endif
 #ifndef BIT_DEPTH
 #define BIT_DEPTH 255
 #endif
@@ -71,7 +74,6 @@ void x264_cabac_init();
 #define ALIGN(x,a) (((x)+((a)-1))&~((a)-1))
 #define IS_DISPOSABLE(type) ( type == X264_TYPE_B )
 #include <stdint.h>
-// — your CABAC headers/globals —
 #define QP_MAX_SPEC 51
 #define CHROMA444   0
 #define CABAC_CTX_COUNT 460
@@ -150,6 +152,14 @@ enum slice_type_e
 
 typedef struct
 {
+    uint8_t  *p;
+    uint8_t  *p_end;
+    uint32_t bit_buffer;
+    int      bits_left;
+} cabac_bitstream_t;
+
+typedef struct
+{
     /* state */
     int i_low;
     int i_range;
@@ -197,8 +207,13 @@ void x264_cabac_encode_terminal_c(x264_cabac_t*cb);
 void x264_cabac_encode_terminal_asm(x264_cabac_t*cb);
 void x264_cabac_encode_ue_bypass(x264_cabac_t*cb,int exp_bits,int val);
 void x264_cabac_encode_flush(int frameNb,x264_cabac_t*cb);
-
-
+//deconing functions for test 
+void x264_cabac_decode_terminal( x264_cabac_t *cb);
+void x264_cabac_decode_flush( x264_cabac_t *cb);
+int x264_cabac_decode_decision(x264_cabac_t *cb, cabac_bitstream_t *bs, int i_ctx);
+void x264_cabac_decode_init(x264_cabac_t *cb, cabac_bitstream_t *bs, uint8_t *p_start, uint8_t *p_end);
+int x264_cabac_decode_ue_bypass(x264_cabac_t *cb, cabac_bitstream_t *bs, int exp_bits);
+int x264_cabac_decode_bypass(x264_cabac_t *cb, cabac_bitstream_t *bs);
 #if HAVE_MMX
 #define x264_cabac_encode_decision x264_cabac_encode_decision_asm
 #define x264_cabac_encode_bypass x264_cabac_encode_bypass_asm

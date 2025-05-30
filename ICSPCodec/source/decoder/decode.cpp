@@ -1,3 +1,4 @@
+#define IS_DECODER
 #include "ICSP_Codec_Decoder.h"
 
 
@@ -5,11 +6,9 @@ int main(int argc, char *argv[])
 {
 	int nframes = atoi(argv[1]);
 	char* binfname = argv[2]; 
-	int QPDC = atoi(argv[3]);
-	int QPAC = atoi(argv[4]);
-	int intraPeriod = atoi(argv[5]);
+	char* decoder = argv[3];
 	char imgfname[256];
-	sprintf(imgfname, argv[6]);
+	sprintf(imgfname, argv[4]);
 
 	/*int nframes = 300;
 	char* binfname = "foreman_cif(352X288)_300f_compCIF_16_16_2.bin";
@@ -21,7 +20,7 @@ int main(int argc, char *argv[])
 
 
 	IcspCodec icspCodec;
-	icspCodec.init(binfname, nframes);
+	icspCodec.init(binfname, nframes, decoder);
 	icspCodec.decoding(imgfname);
 	return 0;
 }

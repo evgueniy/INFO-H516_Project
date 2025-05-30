@@ -185,7 +185,7 @@ typedef struct
 	// Total UV values (despite the var name, see initialization in `splitBlocks`)
 	int totalcbcrblck;
 
-	unsigned char *reconstructedY;	// ���� �������� �����ϰų� ����ϰ� ���� ������ �����Ǿ��� �������� free �ص��� ��
+	unsigned char *reconstructedY;	//                    ϰų      ϰ                   Ǿ             free  ص      
 	unsigned char *reconstructedCb;
 	unsigned char *reconstructedCr;
 
@@ -202,7 +202,7 @@ typedef struct
 	Block8i **intraInverseQuanblck;
 	Block8d **intraInverseDCTblck;
 	Block16i *intraInverseErrblck16;
-	Block16u *intraRestructedblck16; // encoding �Ҷ��� �����Ͱ� �ƴ�
+	Block16u *intraRestructedblck16; // encoding  Ҷ         Ͱ   ƴ 
 	Block8u **intraRestructedblck8;
 
 	MotionVector Reconstructedmv;
@@ -254,6 +254,13 @@ struct Statistics {
 	unsigned* totalMvBits;
 	unsigned* totalEntropyBits;
 
+		// Motion vectors, to be initialized
+	int numberOfBlocks;
+	int** mvPosX;
+	int** mvPosY;
+	int** mvDirX;
+	int** mvDirY;
+
 	// Values range from 2 to 22
 	static constexpr auto histNbitsSize = 24;
 	unsigned dcNbitsHistogram[histNbitsSize];
@@ -274,7 +281,7 @@ class IcspCodec
 {
 public:
 	YCbCr_t YCbCr;
-	FrameData *frames; // ������ �迭; �� �������� �迭�� �ϳ��� ����; ����ü �迭
+	FrameData *frames; //         迭;              迭    ϳ        ;     ü  迭
 	int QstepDC;	// only 1 or 8 or 16;
 	int QstepAC;	// only 1 or 16;
 
@@ -288,6 +295,7 @@ void computePsnr(FrameData* frames,const int nframes,const int width, const int 
 void writeFrameStats(const Statistics &stats, char* fname, int intra_period, int QstepDC, int QstepAC);
 void writeHistogramBitsizeStats(const Statistics &stats, char* fname, int intra_period, int QstepDC, int QstepAC);
 void writeHistogramValueStats(const Statistics &stats, char* fname, int intra_period, int QstepDC, int QstepAC);
+void writeMotionVectors(Statistics& stats, char* filename, int intraPeriod);
 /* parsing command function */
 void set_command_options(int argc, char *argv[], cmd_options_t* cmd);
 
@@ -383,7 +391,7 @@ unsigned char* DCentropy(int DCval, int& nbits, evx::entropy_coder& encoder, Sta
 unsigned char* DCentropyOriginal(int DCval, int& nbits, Statistics* stats = nullptr);
 int ACentropy(int* reordblck, unsigned char *ACentropyResult);
 unsigned char* ACentropy(int* reordblck, int& nbits, evx::entropy_coder& encoder, Statistics* stats = nullptr);
-unsigned char* ACentropyHuffman(int* reordblck, int& nbits);
+unsigned char* ACentropyHuffman(int* reordblck, int& nbits, Statistics* stats = nullptr);
 unsigned char* ACentropyOriginal(int* reordblck, int& nbits);
 unsigned char* MVentropy(MotionVector mv, int& nbitsx, int& nbitsy, evx::entropy_coder& encoder, Statistics* stats = nullptr);
 unsigned char* MVentropyOriginal(MotionVector mv, int& nbitsx, int& nbitsy, Statistics* stats = nullptr);

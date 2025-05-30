@@ -1,5 +1,6 @@
 #include "ICSP_Codec_Encoder.h"
 #include "ICSP_thread.h"
+#include <cstring>
 #include <pthread.h>
 
 #include "abac/bitstream.h"
@@ -32,10 +33,15 @@ Statistics::Statistics(const int nframe) {
 	totalDcBits = new unsigned[nframe];
 	totalMvBits = new unsigned[nframe];
 	totalEntropyBits= new unsigned[nframe];
+	mvPosX = new int*[nframe];
+	mvPosY = new int*[nframe];
+	mvDirX = new int*[nframe];
+	mvDirY = new int*[nframe];
 }
 
 Statistics::~Statistics() {
 	delete[] psnr, totalAcBits,totalDcBits, totalMvBits,totalEntropyBits;
+	delete[] mvDirX,mvPosY,mvDirX,mvDirY;
 }
 
 // Comparator for priority queue
@@ -190,7 +196,7 @@ void writeHistogramBitsizeStats(const Statistics &stats, char* fname, int intra_
 	char fileName[256];
 
 	// File naming scheme original file name _ Qp _ Qp _ Intraperiod 
-	sprintf(fileName, "%s/hist_bitsize_%s_%d_%d_%d.csv",resultDirectory,fname,QstepDC,QstepAC,intra_period);
+	sprintf(fileName, "%s/hist_bitsize_%s_%d_%d_%d_%d.csv",resultDirectory,fname,QstepDC,QstepAC,intra_period,static_cast<int>(EC));
 	FILE *csv = fopen(fileName, "w");
 	if (!csv) {
         perror("Error opening the CSV file");
@@ -227,7 +233,7 @@ void writeHistogramValueStats(const Statistics &stats, char* fname, int intra_pe
 	char fileName[256];
 
 	// File naming scheme original file name _ Qp _ Qp _ Intraperiod 
-	sprintf(fileName, "%s/hist_value_%s_%d_%d_%d.csv",resultDirectory,fname,QstepDC,QstepAC,intra_period);
+	sprintf(fileName, "%s/hist_value_%s_%d_%d_%d_%d.csv",resultDirectory,fname,QstepDC,QstepAC,intra_period,static_cast<int>(EC));
 	FILE *csv = fopen(fileName, "w");
 	if (!csv) {
         perror("Error opening the CSV file");
@@ -255,6 +261,51 @@ void writeHistogramValueStats(const Statistics &stats, char* fname, int intra_pe
 	for(int i = 0; i< size;i++){
 		sprintf(line, "MVY;%u;%u\n", i, stats.mvyValuesHistogram[i]);
     fputs(line, csv);
+	}
+	fclose(csv);
+}
+
+void writeMotionVectors(Statistics& stats, char* fname, int intraPeriod) {
+	char fileName[256];
+
+	sprintf(fileName, "%s/mv_%s_.csv", resultDirectory, fname);
+	FILE *csv = fopen(fileName, "w");
+	if (!csv) {
+      perror("Error opening the CSV file");
+      exit(1);
+    }
+
+	char line[256];
+	//header
+    sprintf(line, "Frame;MvPosX;MvPosY;MvDirX;MvDirY\n");
+    fputs(line, csv);
+
+    int frmCount = stats.frameCount;
+    int blkCount = stats.numberOfBlocks;
+
+	// First block
+	for (int i = 0; i < blkCount; i++) {
+		int posX = 0;
+		int posY = 0;
+		int dirX = 0;
+		int dirY = 0;
+		sprintf(line, "%d;%d;%d;%d;%d\n", 0, posX, posY, dirX, dirY);
+		fputs(line, csv);
+	}
+	if (intraPeriod > 1){
+		// Remaining blocks
+		for (int frm = 1; frm < frmCount; frm++) {
+			// Take the mv vectors of the previous frame (unless first which is all 0)
+			int frmIdx = frm % intraPeriod == 0 ? frm - 1 : frm;
+			for(int i = 0; i< blkCount; i++){
+				int posX = stats.mvPosX[frmIdx][i];
+				int posY = stats.mvPosY[frmIdx][i];
+				int dirX = stats.mvDirX[frmIdx][i];
+				int dirY = stats.mvDirY[frmIdx][i];
+				sprintf(line, "%d;%d;%d;%d;%d\n", frm, posX, posY, dirX, dirY);
+				fputs(line, csv);
+			}
+		}
 	}
 	fclose(csv);
 }
@@ -406,7 +457,6 @@ void* encoding_thread(void* arg)
 
 	return NULL;
 }
-
 
 // single-thread function
 void single_thread_encoding(FrameData* frames, YCbCr_t* YCbCr,char* fname, int intra_period, int QstepDC, int QstepAC,char* entropyCoder, Statistics *stats)
@@ -2307,13 +2357,13 @@ void motionEstimation(FrameData& cntFrm, FrameData& prevFrm)
 	unsigned char spiralblck[16][16] = { 0, };
 
 	int y0=0, x0=0, cntX0=0, cntY0=0, tempX=0, tempY=0;
-	int flag=0, xflag=1, yflag=-1;
+	int flag=0/*moving x or y*/, xflag=1/*moving x up or down*/, yflag=-1/*moving y up or down*/;
 	int xcnt=0, ycnt=0;
 	int totalblck = cntFrm.nblocks16;
 	int SADflag=1;
 	int SAD=0, min=INT_MAX;
 	int cnt=0;
-	int nSearch = 64; // spiral search ��ȸ��
+	int nSearch = 128; // spiral search ��ȸ��
 
 	for(int nblck=0; nblck<totalblck && SADflag; nblck++)
 	{	
@@ -2321,23 +2371,12 @@ void motionEstimation(FrameData& cntFrm, FrameData& prevFrm)
 		min = INT_MAX; SAD = 0;	cnt = 0; SADflag=1;
 		cntX0 = x0 = (nblck%splitWidth)*blocksize1;
 		cntY0 = y0 = (nblck/splitWidth)*blocksize1;
-		xcnt=0; ycnt=0;
+		xcnt=1; ycnt=1;
+		flag=0, xflag=1, yflag=1;
 
 		while(cnt<nSearch) // ��ü ȸ�� 64�� �̴���; ������ ���ɼ��� ũ��
 		{	
 			SAD = 0;
-			if(!flag) // x��ȭ
-			{
-				if(xflag<=0) x0 += xcnt;
-				else		 x0 -= xcnt;
-				flag=1; xcnt++; xflag*=-1;
-			}
-			else if(flag) // y��ȭ
-			{
-				if(yflag<0)  y0 += ycnt;
-				else		 y0 -= ycnt;
-				flag=0;	ycnt++; yflag*=-1;
-			}
 
 			get16block(paddingImage, spiralblck, (padlen+y0), (padlen+x0), padImgWidth, blocksize1);
 			SAD = getSAD(currentblck->block, spiralblck, blocksize1);
@@ -2356,6 +2395,27 @@ void motionEstimation(FrameData& cntFrm, FrameData& prevFrm)
 			}
 
 			cnt++;
+
+			// Spiral search
+			if (!flag) {
+				// Move the x
+				x0 += xflag;
+				xcnt--;
+				if (xcnt <= 0) {
+					xcnt = ycnt + 1;
+					flag = 1;
+					xflag *= -1;
+				}
+			} else {
+				// Move the y
+				y0 += yflag;
+				ycnt--;
+				if (ycnt <= 0) {
+					ycnt = xcnt;
+					flag = 0;
+					yflag *= -1;
+				}
+			}
 		}
 		cntFrm.blocks[nblck].mv.x = cntX0 - tempX;
 		cntFrm.blocks[nblck].mv.y = cntY0 - tempY;
@@ -2442,6 +2502,7 @@ void motionCompensation(FrameData& cntFrm, FrameData& prevFrm)
 void getPaddingImage(unsigned char* src, unsigned char* dst, int padWidth, int padlen, int width, int height)
 {
 
+	// Fill inside with initial image
 	for(int y=0; y<height; y++)
 		for(int x=0; x<width; x++)
 			dst[(y*padWidth+padlen*padWidth)+(x+padlen)] = src[y*width+x];
@@ -2450,7 +2511,7 @@ void getPaddingImage(unsigned char* src, unsigned char* dst, int padWidth, int p
 	cout << "getpad" << endl;
 	system("pause");*/
 
-	// ����
+	// Fill upper and bottom central pad band by extending edge
 	for(int y=0; y<padlen; y++)
 	{
 		for(int x=0; x<width; x++)
@@ -2460,17 +2521,19 @@ void getPaddingImage(unsigned char* src, unsigned char* dst, int padWidth, int p
 		}
 	}
 
-	// �Ʒ���
+	// Fill left and right central pad band by extending edge
 	for(int y=0; y<height; y++)
 	{
 		for(int x=0; x<padlen; x++)
 		{
+			// Fill left by extending edge
 			dst[((y+padlen)*padWidth) + x] = src[y*width];
+			// Fill right by extending edge
 			dst[((y+padlen)*padWidth) + x+(width+padlen-1)] = src[y*width+(width-1)];
 		}
 	}
 
-	// 4 �𼭸�
+	// Fill 4 corners by extending the image corner value
 	for(int y=0; y<padlen; y++)
 	{
 		for(int x=0; x<padlen; x++)
@@ -2576,17 +2639,20 @@ void mvPrediction(FrameData& cntFrm, int numOfblck16)
 
 	BlockData& bd = cntFrm.blocks[numOfblck16];
 
+	// First block
 	if(numOfblck16==0)
 	{
 		bd.mv.x = bd.mv.x-8;
 		bd.mv.y = bd.mv.y-8;
 	}
+	// On first line
 	else if(numOfblck16/splitWidth==0)
 	{
 		BlockData& prevbd = cntFrm.blocks[numOfblck16-1];
 		bd.mv.x = bd.mv.x-prevbd.Reconstructedmv.x;
 		bd.mv.y = bd.mv.y-prevbd.Reconstructedmv.y;
 	}
+	// On left edge
 	else if(numOfblck16%splitWidth==0)
 	{			
 		BlockData& prevbd = cntFrm.blocks[numOfblck16-splitWidth];
@@ -2595,6 +2661,7 @@ void mvPrediction(FrameData& cntFrm, int numOfblck16)
 	}
 	else
 	{			
+		// On right edge
 		if(numOfblck16%splitWidth==splitWidth-1)
 		{
 			// median l ul u
@@ -2614,6 +2681,7 @@ void mvPrediction(FrameData& cntFrm, int numOfblck16)
 			else if((y2>y1)&&(y2>y3)) ymedian = (y1>x3)?y1:y3;
 			else					  ymedian = (y1>y2)?y1:y2;
 		}
+		// Everything else
 		else
 		{
 			// median l u ur
@@ -2740,7 +2808,7 @@ void CmotionCompensation(FrameData& cntFrm, FrameData& prevFrm, int type)
 	unsigned char predblck[16][16] = { 0, };
 
 	CBlockData *cbd = NULL;
- 	if(type == CB)
+	if(type == CB)
 		cbd = cntFrm.Cbblocks;
 	else if(type == CR)
 		cbd = cntFrm.Crblocks;
@@ -5101,6 +5169,7 @@ void makebitstream(FrameData* frames, int nframes, int height, int width, int Qs
 		int maxbits = frames->splitHeight * frames->splitWidth * frames->blocks->blocksize1 * frames->blocks->blocksize1 * nframes * 8;
 		if (nframes <= 480 && nframes > 300) maxbits *= 4;
 		else if (nframes <= 300)maxbits *= 6;
+		// if (EC == EntropyCoding::Cabac) maxbits /= nframes;
 		// if (nframes > 480) maxbits4 /= ;
 		// Allocate this number in bytes
 		unsigned char* tempFrame = (unsigned char*)malloc(sizeof(unsigned char)*(maxbits/8));
@@ -5178,7 +5247,7 @@ void allintraBodyCabac(FrameData* frames, int nframes, int QstepDC, FILE* fp, St
     int totalblck = frames->nblocks16;
     int nblock8   = frames->nblocks8;
     int maxbytes  = frames->splitHeight * frames->splitWidth * frames->blocks->blocksize1 *
-                    frames->blocks->blocksize1 * 8 * nframes; // estimate in bytes
+                    frames->blocks->blocksize1 * 8; // estimate in bytes
 	if (nframes <= 480) maxbytes *= 2;
     // Allocate output buffer
     uint8_t* frame = (uint8_t*)malloc(sizeof(uint8_t) * maxbytes);
@@ -5190,6 +5259,7 @@ void allintraBodyCabac(FrameData* frames, int nframes, int QstepDC, FILE* fp, St
 
     for (int nfrm = 0; nfrm < nframes; nfrm++) {
         x264_cabac_t cb;
+		memset(frame,0,maxbytes*sizeof(uint8_t));
         x264_cabac_context_init(&cb, SLICE_TYPE_I, QstepDC, 0);
         x264_cabac_encode_init(&cb, frame, frameEnd);
 
@@ -5210,7 +5280,7 @@ void allintraBodyCabac(FrameData* frames, int nframes, int QstepDC, FILE* fp, St
                     stats->totalDcBits[frames[nfrm].numOfFrame] += x264_cabac_pos(&cb) - pos0;
 
                 pos0 = x264_cabac_pos(&cb); 
-                x264_cabac_encode_decision(&cb, CTX_AC_PRESENT, !bd.intraACflag[nblck8]);
+                x264_cabac_encode_decision(&cb, CTX_AC_PRESENT, bd.intraACflag[nblck8]);
 
                 if (bd.intraACflag[nblck8] == 1) {
                     for (int i = 0; i < 63; i++)
@@ -5250,7 +5320,7 @@ void allintraBodyCabac(FrameData* frames, int nframes, int QstepDC, FILE* fp, St
                     stats->totalDcBits[frames[nfrm].numOfFrame] += x264_cabac_pos(&cb) - pos0;
 
                 pos0 = x264_cabac_pos(&cb);
-                x264_cabac_encode_decision(&cb, CTX_AC_PRESENT, !cbd.intraACflag);
+                x264_cabac_encode_decision(&cb, CTX_AC_PRESENT, cbd.intraACflag);
 
                 if (cbd.intraACflag == 1) {
                     for (int i = 0; i < 63; i++)
@@ -5489,8 +5559,8 @@ void intraBodyCabac(FrameData& frm, unsigned char* tempFrame, int& cntbits,x264_
                     stats->totalDcBits[frm.numOfFrame] += x264_cabac_pos(&cb) - pos0;
 
                 pos0 = x264_cabac_pos(&cb);
-                x264_cabac_encode_decision(&cb, CTX_AC_PRESENT, !bd.intraACflag[nblck8]);
-
+                x264_cabac_encode_decision(&cb, CTX_AC_PRESENT, bd.intraACflag[nblck8]);
+			
                 if (bd.intraACflag[nblck8] == 1) {
                     for (int i = 0; i < 63; i++)
                         x264_cabac_encode_decision(&cb, CTX_IDX_AC_START + i, 0);
@@ -5529,7 +5599,7 @@ void intraBodyCabac(FrameData& frm, unsigned char* tempFrame, int& cntbits,x264_
                     stats->totalDcBits[frm.numOfFrame] += x264_cabac_pos(&cb) - pos0;
 
                 pos0 = x264_cabac_pos(&cb);
-                x264_cabac_encode_decision(&cb, CTX_AC_PRESENT, !cbd.intraACflag);
+                x264_cabac_encode_decision(&cb, CTX_AC_PRESENT, cbd.intraACflag);
 
                 if (cbd.intraACflag == 1) {
                     for (int i = 0; i < 63; i++)
@@ -5736,13 +5806,27 @@ void interBodyCabac(FrameData& frm, unsigned char* tempFrame, int& cntbits,x264_
 	unsigned char* DCResult = NULL;
 	unsigned char* ACResult = NULL;
 	unsigned char* MVResult = NULL;
+
+	if (stats) {
+		stats->numberOfBlocks = totalblck;
+		stats->mvPosX[frm.numOfFrame] = (int*) malloc(sizeof(int) * totalblck);
+		stats->mvPosY[frm.numOfFrame] = (int*) malloc(sizeof(int) * totalblck);
+		stats->mvDirX[frm.numOfFrame] = (int*) malloc(sizeof(int) * totalblck);
+		stats->mvDirY[frm.numOfFrame] = (int*) malloc(sizeof(int) * totalblck);
+	}
 	for (int nblck16 = 0; nblck16 < totalblck; nblck16++) {
             BlockData& bd = frm.blocks[nblck16];
+			if (stats) {
+				stats->mvPosX[frm.numOfFrame][nblck16] = nblck16 % frm.splitWidth * 16 + 8;
+				stats->mvPosY[frm.numOfFrame][nblck16] = nblck16 / frm.splitWidth * 16 + 8;
+				stats->mvDirX[frm.numOfFrame][nblck16] = bd.mv.x;
+				stats->mvDirY[frm.numOfFrame][nblck16] = bd.mv.y;
+			}
 			// has MV?
         	x264_cabac_encode_decision(&cb, CTX_MV_FLAG,  1);
 			//X
 			int pos0 = x264_cabac_pos(&cb);
-			int mvx = bd.mv.x;  // signed delta
+			int mvx = bd.mv.x; 
         	x264_cabac_encode_ue_bypass(&cb, 0, abs(mvx));
         	x264_cabac_encode_bypass(&cb, mvx < 0);
 			//Y
@@ -5751,8 +5835,8 @@ void interBodyCabac(FrameData& frm, unsigned char* tempFrame, int& cntbits,x264_
         	x264_cabac_encode_bypass   (&cb, mvy < 0);
         	if (stats) stats->totalMvBits[frm.numOfFrame] += x264_cabac_pos(&cb) - pos0;
             for (int nblck8 = 0; nblck8 < nblock8; nblck8++) {
-                x264_cabac_encode_decision(&cb, CTX_MPM_FLAG, bd.MPMFlag[nblck8]);
-                x264_cabac_encode_decision(&cb, CTX_INTRA_PRED, bd.intraPredMode[nblck8]);
+                // x264_cabac_encode_decision(&cb, CTX_MPM_FLAG, bd.MPMFlag[nblck8]);
+                // x264_cabac_encode_decision(&cb, CTX_INTRA_PRED, bd.intraPredMode[nblck8]);
 				pos0 = x264_cabac_pos(&cb);
                 int dc = bd.interReorderedblck8[nblck8][0];
                 x264_cabac_encode_decision(&cb, CTX_IDX_DC, dc != 0);
@@ -5765,7 +5849,7 @@ void interBodyCabac(FrameData& frm, unsigned char* tempFrame, int& cntbits,x264_
                     stats->totalDcBits[frm.numOfFrame] += x264_cabac_pos(&cb) - pos0;
 
                 pos0 = x264_cabac_pos(&cb);
-                x264_cabac_encode_decision(&cb, CTX_AC_PRESENT, !bd.intraACflag[nblck8]);
+                x264_cabac_encode_decision(&cb, CTX_AC_PRESENT, bd.intraACflag[nblck8]);
 
                 if (bd.intraACflag[nblck8] == 1) {
                     for (int i = 0; i < 63; i++)
@@ -5805,7 +5889,7 @@ void interBodyCabac(FrameData& frm, unsigned char* tempFrame, int& cntbits,x264_
                     stats->totalDcBits[frm.numOfFrame] += x264_cabac_pos(&cb) - pos0;
 
                 pos0 = x264_cabac_pos(&cb);
-                x264_cabac_encode_decision(&cb, CTX_AC_PRESENT, !cbd.intraACflag);
+                x264_cabac_encode_decision(&cb, CTX_AC_PRESENT, cbd.intraACflag);
 
                 if (cbd.intraACflag == 1) {
                     for (int i = 0; i < 63; i++)
@@ -5843,9 +5927,24 @@ void interBody(FrameData& frm, unsigned char* tempFrame, int& cntbits, evx::entr
 	unsigned char* DCResult = NULL;
 	unsigned char* ACResult = NULL;
 	unsigned char* MVResult = NULL;
+
+	if (stats) {
+		stats->numberOfBlocks = totalblck;
+		stats->mvPosX[frm.numOfFrame] = (int*) malloc(sizeof(int) * totalblck);
+		stats->mvPosY[frm.numOfFrame] = (int*) malloc(sizeof(int) * totalblck);
+		stats->mvDirX[frm.numOfFrame] = (int*) malloc(sizeof(int) * totalblck);
+		stats->mvDirY[frm.numOfFrame] = (int*) malloc(sizeof(int) * totalblck);
+	}
 	for(int nblck16=0; nblck16<totalblck; nblck16++)
 	{
 		BlockData& bd = frm.blocks[nblck16];
+
+		if (stats) {
+			stats->mvPosX[frm.numOfFrame][nblck16] = nblck16 % frm.splitWidth * 16 + 8;
+			stats->mvPosY[frm.numOfFrame][nblck16] = nblck16 / frm.splitWidth * 16 + 8;
+			stats->mvDirX[frm.numOfFrame][nblck16] = bd.mv.x;
+			stats->mvDirY[frm.numOfFrame][nblck16] = bd.mv.y;
+		}
 		
 		(tempFrame[cntbits++/8] <<= 1) |= 1;  // mv modeflag
 		
@@ -6776,12 +6875,12 @@ unsigned char* ACentropyOriginal(int* reordblck, int& nbits,Statistics* stats ){
 unsigned char* ACentropy(int* reordblck, int& nbits, evx::entropy_coder& encoder, Statistics* stats)
 {
 	if (EC == EntropyCoding::Abac) return ACentropyCabac(reordblck, nbits, encoder, stats);
-	else if (EC == EntropyCoding::Huffman)  return ACentropyHuffman(reordblck, nbits);
+	else if (EC == EntropyCoding::Huffman)  return ACentropyHuffman(reordblck, nbits, stats);
 	return ACentropyOriginal(reordblck, nbits,stats);
 	
 }
 
-unsigned char* ACentropyHuffman(int* reordblck, int& nbits) {
+unsigned char* ACentropyHuffman(int* reordblck, int& nbits, Statistics* stats) {
 	const int length = 63;
 	unordered_map<int, int> freq;
 
@@ -6821,6 +6920,13 @@ unsigned char* ACentropyHuffman(int* reordblck, int& nbits) {
 
 		if (absval != 0)
 			bitstream.push_back(sign);
+
+		// Record statistics for histograms
+		if (stats) {
+			int bitsize = absval == 0 ? code.length() : code.length() + 1;
+			stats->acNbitsHistogram[bitsize] += 1;
+			stats->acValuesHistogram[min(absval, 2048)] += 1;
+		}
 	}
 
 	nbits = bitstream.size();
@@ -7283,7 +7389,7 @@ void checkResultYUV(unsigned char *Y, unsigned char *Cb, unsigned char *Cr, int 
 }
 void checkResultFrames(FrameData* frm,char* fname, int width, int height, int nframe,int QstepDC, int QstepAC, int intraPeriod, int predtype, int chtype)
 {
-	FILE* output_fp;
+	FILE* output_fp, *output_fp_error_image;
 
 	char output_fname[256];
 	sprintf(output_fname, "%s_%d_%d_%d_decoded.yuv" ,fname,QstepDC,QstepAC,intraPeriod);
@@ -7295,29 +7401,95 @@ void checkResultFrames(FrameData* frm,char* fname, int width, int height, int nf
 		return;
 	}
 
+	sprintf(output_fname, "%s_%d_%d_%d_errors.yuv" ,fname,QstepDC,QstepAC,intraPeriod);
+
+	output_fp_error_image = fopen(output_fname, "wb");
+	if(output_fp==NULL)
+	{
+		cout << "fail to save yuv" << endl;
+		return;
+	}
+
+	int yFrameSize = height*width;
+	int yFrameBytes = sizeof(unsigned char)*yFrameSize;
+	int uvFrameSize = (height/2)*(width/2);
+	int uvFrameBytes = sizeof(unsigned char)*uvFrameSize;
+
+	auto errorY = (unsigned char**) malloc(nframe*sizeof(unsigned char**));
+	auto errorU = (unsigned char**) malloc(nframe*sizeof(unsigned char**));
+	auto errorV = (unsigned char**) malloc(nframe*sizeof(unsigned char**));
+	for (int i = 0; i < nframe; i++) {
+		errorY[i] = (unsigned char*) malloc(yFrameBytes);
+		errorU[i] = (unsigned char*) malloc(uvFrameBytes);
+		errorV[i] = (unsigned char*) malloc(uvFrameBytes);
+	}
+
+	// First frame does not have an error image
+	memset(errorY[0], 0, yFrameBytes);
+	memset(errorU[0], 128, uvFrameBytes);
+	memset(errorV[0], 128, uvFrameBytes);
+
+	// Compute the error frames
+	for (int i = 1; i < nframe; i++) {
+		// Y
+		for (int y = 0; y < height; y++) {
+			for (int x = 0; x < width; x++) {
+				const int idx = y*width + x;
+				// We convert to int and back to unsigned char to avoid overflows
+				unsigned char errorYVal = (unsigned char) abs((int)frm[i].reconstructedY[idx] - (int)frm[i].Y[idx]);
+				errorY[i][idx] = errorYVal;
+			}
+		}
+		// UV
+		for (int y = 0; y < height / 2; y++) {
+			for (int x = 0; x < width / 2; x++) {
+				const int idx = y*width/2 + x;
+				// We convert to int and back to unsigned char to avoid overflows
+				unsigned char errorUVal = (unsigned char) abs((int)frm[i].reconstructedCb[idx] - (int)frm[i].Cb[idx]);
+				unsigned char errorVVal = (unsigned char) abs((int)frm[i].reconstructedCr[idx] - (int)frm[i].Cr[idx]);
+				errorU[i][idx] = 128;
+				errorV[i][idx] = 128;
+			}
+		}
+	}
+
 	if(chtype==SAVE_Y)	// Y�θ� �� ���� �����
 	{
 		for(int i=0; i<nframe; i++)
 		{
-			fwrite(frm[i].reconstructedY, sizeof(unsigned char)*height*width, 1, output_fp);
+			// Reconstructed YUV
+			fwrite(frm[i].reconstructedY, yFrameBytes, 1, output_fp);
+			// Difference YUV
+			fwrite(errorY[i], yFrameBytes, 1, output_fp_error_image);
 		}
 	}
 	else if(chtype==SAVE_YUV)
 	{
 		for(int i=0; i<nframe; i++)
 		{
-			fwrite(frm[i].reconstructedY,  sizeof(unsigned char)*height*width, 1, output_fp);
-			fwrite(frm[i].reconstructedCb,  sizeof(unsigned char)*(height/2)*(width/2), 1, output_fp);
-			fwrite(frm[i].reconstructedCr,  sizeof(unsigned char)*(height/2)*(width/2), 1, output_fp);
+
+			// Reconstructed YUV
+			fwrite(frm[i].reconstructedY,  yFrameBytes, 1, output_fp);
+			fwrite(frm[i].reconstructedCb,  uvFrameBytes, 1, output_fp);
+			fwrite(frm[i].reconstructedCr,  uvFrameBytes, 1, output_fp);
+			// Difference YUV
+			fwrite(errorY[i],  yFrameBytes, 1, output_fp_error_image);
+			fwrite(errorU[i],  uvFrameBytes, 1, output_fp_error_image);
+			fwrite(errorV[i],  uvFrameBytes, 1, output_fp_error_image);
 		}
 	}
+
 	fclose(output_fp);
+	fclose(output_fp_error_image);
 
 	for(int i=0; i<nframe; i++)
 	{
 		free(frm[i].reconstructedY);
 		free(frm[i].reconstructedCb);
 		free(frm[i].reconstructedCr);
+		free(errorY[i]);
+		free(errorU[i]);
+		free(errorV[i]);
 	}
 }
 void checkResultRestructedFrames(FrameData* frm, int width, int height, int nframe, int type)

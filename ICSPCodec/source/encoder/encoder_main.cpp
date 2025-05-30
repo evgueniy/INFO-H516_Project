@@ -45,8 +45,9 @@ int main(int argc, char *argv[])
 	icspCodec.init(options.total_frames, options.yuv_fname, options.width, options.height, options.QP_DC, options.QP_AC);
 	icspCodec.encoding(&options, &stats);
 	writeFrameStats(stats, filename, options.intra_period, options.QP_DC, options.QP_AC);
-	writeHistogramBitsizeStats(stats, filename, options.intra_period, options.QP_DC, options.QP_AC);
-	writeHistogramValueStats(stats, filename, options.intra_period, options.QP_DC, options.QP_AC);
+	// writeHistogramBitsizeStats(stats, filename, options.intra_period, options.QP_DC, options.QP_AC);
+	// writeHistogramValueStats(stats, filename, options.intra_period, options.QP_DC, options.QP_AC);
+	writeMotionVectors(stats, filename, options.intra_period);
 	
 	return 0;
 }

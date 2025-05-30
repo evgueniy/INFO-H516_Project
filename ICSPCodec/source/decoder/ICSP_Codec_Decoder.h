@@ -1,7 +1,12 @@
+#ifndef ICSP_CODEC_DECODER_H
+#define ICSP_CODEC_DECODER_H
 #pragma once
 #include <iostream>
 #include <time.h>
-
+#define IS_DECODER
+#include "../encoder/cabac.h"
+#include <cstring>
+#include <cmath>
 using namespace std;
 
 #define INTRA    0
@@ -11,8 +16,13 @@ using namespace std;
 #define SAVE_Y   5
 #define SAVE_YUV 6
 
-#define MAXFRAMES 300
-
+#define MAXFRAMES 600
+#define CTX_IDX_DC 4
+#define CTX_IDX_AC_START 5
+#define CTX_MPM_FLAG       100   // for mpm flag
+#define CTX_INTRA_PRED     101   // for intraPredMode flag
+#define CTX_AC_PRESENT     102   // for your intraACflag (ACâ€‘present)
+#define CTX_MV_FLAG    	   103  // motion vector flags
 
 
 const double pi = 3.14159265359;
@@ -24,7 +34,7 @@ const double costable[8][8] =
 	 0.707107,  -0.707107,  -0.707107,  0.707107,  0.707107, -0.707107, -0.707107,  0.707107,
 	 0.55557,   -0.980785,   0.19509,   0.83147,  -0.83147,  -0.19509,   0.980785, -0.55557,
 	 0.382683,  -0.92388,    0.92388,  -0.382683, -0.382683,  0.92388,  -0.92388,   0.382683,
-	 0.19509,   -0.55557,    0.83147,  -0.980785,  0.980785, -0.83147,   0.55557,  -0.19509};	// cos tableÀÌ ¿Ã¹Ù¸¥ check
+	 0.19509,   -0.55557,    0.83147,  -0.980785,  0.980785, -0.83147,   0.55557,  -0.19509};	// cos tableï¿½ï¿½ ï¿½Ã¹Ù¸ï¿½ check
 const double irt2 = 1.0/sqrt(2.0); // inverse square root 2
 
 
@@ -39,6 +49,12 @@ struct Block16u{ unsigned char block[16][16]; };
 struct Block16s{ signed char block[16][16]; };
 struct MotionVector{ int x,y;};
 
+enum class EntropyCoding {
+    Original,
+    Abac,
+    Huffman,
+	Cabac
+};
 #pragma pack(push, 1)	
 struct header
 {
@@ -167,9 +183,9 @@ public:
 	int mvPredmode;
 	int intraPeriod;
 	int intraPredictionMode;
-
+	EntropyCoding decoder = EntropyCoding::Original;
 public:
-	void init(char* binfname, int nframes);	
+	void init(char* binfname, int nframes, char* encoder);	
 	void decoding(char* imgfname);
 	~IcspCodec();
 };
@@ -199,6 +215,7 @@ void interDCblckDataInit(DCBlockData& dcbd, InterbodyCbCr interbdcbcr, int block
 
 /* intra prediction function */
 void allintraPredictionDecode(DFrameData *dframes, int nframes, int QstepDC, int QstepAC);
+void allintraPredictionDecodeCabac(DFrameData *dframes, int nframes, int QstepDC, int QstepAC);
 void intraPredictionDecode(DFrameData& dfrm, int QstepDC, int QstepAC);
 void IDPCM_pix_0(unsigned char upper[][8], double current[][8], unsigned char restored_temp[][8], int blocksize);
 void IDPCM_pix_1(unsigned char left[][8], double current[][8], unsigned char restored_temp[][8], int blocksize);
@@ -232,18 +249,24 @@ void CIDPCM_DC_block(DFrameData& dfrm, DCBlockData& dcbd, int numOfblck8, int Cb
 void CIDCT_block(DCBlockData &dcbd, int blocksize, int predmode);
 void Creorderingblck(DCBlockData& dcbd, int predmode);
 
-void checkResultFrames(DFrameData* frm, int width, int height, int nframe, int predtype, int chtype);
+void checkResultFrames(DFrameData* frm, int width, int height, int nframe, int predtype, int chtype,char* imgfname);
 
-inline void IcspCodec::init(char* binfname, int nframes)
+inline void IcspCodec::init(char* binfname, int nframes, char* encoder)
 {
 	
 	char temp[256];
-	sprintf(temp, "output\\%s", binfname);
+	char temp2[256];
+	sprintf(temp, "%s", binfname);
+	memcpy(temp2, encoder, sizeof(char)*128);
+	if      (strcmp(temp2,"abac")    == 0) this->decoder = EntropyCoding::Abac; 
+	else if (strcmp(temp2,"huffman") == 0) this->decoder = EntropyCoding::Huffman; 
+	else if (strcmp(temp2,"cabac")   == 0) this->decoder = EntropyCoding::Cabac;
+	cout << "Encoder" << temp2 << " : " << static_cast<int>(this->decoder) << endl;
 
 	FILE* fp = fopen(temp, "rb");
 	if(fp==NULL)
 	{
-		cout << "fail to load " << temp << endl;
+		cout << "fail to load>:" << temp << endl;
 		exit(-1);
 	}
 
@@ -290,10 +313,11 @@ inline void IcspCodec::init(char* binfname, int nframes)
 inline void IcspCodec::decoding(char *imgfname)
 {
 	clock_t t = clock();
-	if( intraPeriod==1 )
+	if( intraPeriod==1)
 	{
+		
 		allintraPredictionDecode(dframes, nframes, QstepDC, QstepAC);
-		checkResultFrames(dframes,  width, height, nframes, INTRA, SAVE_YUV);
+		checkResultFrames(dframes,  width, height, nframes, INTRA, SAVE_YUV, imgfname);
 	}
 	else
 	{
@@ -309,7 +333,7 @@ inline void IcspCodec::decoding(char *imgfname)
 			}
 			
 		}
-		checkResultFrames(dframes,  width, height, nframes, INTER, SAVE_YUV);
+		checkResultFrames(dframes,  width, height, nframes, INTER, SAVE_YUV, imgfname);
 	}
 	
 	double detime = (double)(clock()-t)/CLOCKS_PER_SEC;
@@ -320,7 +344,7 @@ inline void IcspCodec::decoding(char *imgfname)
 	double val=0;
 	unsigned char* origimg = (unsigned char*)malloc(sizeof(unsigned char)*width*height);
 	char temp[256];
-	sprintf(temp, "data\\%s", imgfname);
+	sprintf(temp, "%s", imgfname);
 	FILE* imgfp = fopen(temp, "rb");
 	if(imgfp == NULL)
 	{
@@ -364,3 +388,4 @@ inline IcspCodec::~IcspCodec()
 		free(dframes[i].dcrblocks);
 	}
 }
+#endif

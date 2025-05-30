@@ -26,6 +26,7 @@
  *****************************************************************************/
 
 #include "cabac.h"
+#include "string.h"
 
 static uint8_t cabac_contexts[4][QP_MAX_SPEC+1][1024];
 
@@ -1343,6 +1344,16 @@ static inline void cabac_putbyte( x264_cabac_t *cb )
         }
     }
 }
+static inline void cabac_decode_renorm( x264_cabac_t *cb )
+{
+    while( cb->i_range < 256 )
+    {
+        cb->i_range <<= 1;
+        cb->i_low   <<= 1;
+        if( cb->p < cb->p_end )
+            cb->i_low |= (*cb->p++ & 0x80) >> 7;
+    }
+}
 
 static inline void cabac_encode_renorm( x264_cabac_t *cb )
 {
@@ -1369,15 +1380,42 @@ void x264_cabac_encode_decision_c( x264_cabac_t *cb, int i_ctx, int b )
     cb->state[i_ctx] = x264_cabac_transition[i_state][b];
     cabac_encode_renorm( cb );
 }
-
-/* Note: b is negated for this function */
+//#include <stdio.h>
+/* Note: b is negated for this function 
 void x264_cabac_encode_bypass_c( x264_cabac_t *cb, int b )
 {
+    // printf("cb->i_low: %d\n",cb->i_low);
     cb->i_low <<= 1;
-    cb->i_low += b & cb->i_range;
+    if( b )
+    cb->i_low += cb->i_range;
+    // cb->i_low += b & cb->i_range;
+    // printf("b (%d) & (%d) cb->i_range = %d\n",b,cb->i_range,b & cb->i_range);
     cb->i_queue += 1;
     cabac_putbyte( cb );
+}*/
+
+void x264_cabac_encode_bypass_c( x264_cabac_t *cb, int b )
+{
+    // Arithmetic encoding with P(0) = P(1) = 0.5
+    // This means the range is split exactly in half.
+    // cb->i_range initially is 0x01FE (510).
+    // For bypass, the spec often considers i_range to be effectively 2,
+    // but here we use the arithmetic coder's i_range and split it.
+    
+    int range_mps_equiv = cb->i_range >> 1; // MPS part is half the range
+    int range_lps_equiv = cb->i_range - range_mps_equiv; // LPS part is the other half
+
+    if (b == 1) { // Bit '1' is treated like an LPS if MPS is 0 (or vice versa)
+                  // Let's map bit 0 to the lower half, bit 1 to the upper half of the interval.
+        cb->i_low += range_mps_equiv;
+        cb->i_range = range_lps_equiv;
+    } else { // Bit '0'
+        cb->i_range = range_mps_equiv;
+    }
+    // Call the original cabac_encode_renorm which uses cabac_putbyte
+    cabac_encode_renorm( cb );
 }
+
 
 static const int bypass_lut[16] =
 {
@@ -1385,27 +1423,65 @@ static const int bypass_lut[16] =
     0x1fd00, 0x7fa00, 0x1ff400, 0x7fe800, 0x1ffd000, 0x7ffa000, 0x1fff4000, 0x7ffe8000
 };
 
+
 void x264_cabac_encode_ue_bypass( x264_cabac_t *cb, int exp_bits, int val )
 {
-    uint32_t v = val + (1<<exp_bits);
-    int k = 31 - x264_clz( v );
-    uint32_t x = ((uint32_t)bypass_lut[k-exp_bits]<<exp_bits) + v;
-    k = 2*k+1-exp_bits;
-    int i = ((k-1)&7)+1;
-    do {
-        k -= i;
-        cb->i_low <<= i;
-        cb->i_low += ((x>>k)&0xff) * cb->i_range;
-        cb->i_queue += i;
-        cabac_putbyte( cb );
-        i = 8;
-    } while( k > 0 );
+    // This corrected version implements standard UEG for exp_bits = 0,
+    // using the arithmetically coded P=0.5 bypass bit encoder.
+    // It now correctly calculates the suffix.
+    if (val < 0) {
+        // Or handle error appropriately
+        return;
+    }
+
+    unsigned int value_to_code = (unsigned int)val;
+    unsigned int code_num = value_to_code + 1; // For ue(v), we operate on val+1
+
+    int k = 0; 
+    if (code_num > 0) {
+        unsigned int temp = code_num;
+        while(temp > 1) { // Calculate k = floor(log2(code_num))
+            temp >>= 1;
+            k++;
+        }
+    } else { 
+        // This case (val = MAX_UINT making code_num wrap to 0) is extreme.
+        // For val = 0, code_num = 1, k = 0.
+    }
+// 
+    // Encode k leading zeros
+    for (int i = 0; i < k; i++) {
+        x264_cabac_encode_bypass_c(cb, 0); // Uses the P=0.5 arithmetic bypass encoder
+    }
+// 
+    // Encode the '1' bit (separator)
+    x264_cabac_encode_bypass_c(cb, 1);
+// 
+    // Calculate the suffix: (code_num - (1 << k)) which are the k LSBs of code_num
+    // effectively code_num without its implicit leading '1' (at position k).
+    unsigned int suffix = code_num & ((1u << k) - 1);
+// 
+    // Encode the k suffix bits, MSB first
+    for (int i = k - 1; i >= 0; i--) {
+        x264_cabac_encode_bypass_c(cb, (suffix >> i) & 1);
+    }
 }
+
 
 void x264_cabac_encode_terminal_c( x264_cabac_t *cb )
 {
     cb->i_range -= 2;
     cabac_encode_renorm( cb );
+}
+
+void x264_cabac_decode_terminal( x264_cabac_t *cb )
+{
+    // 1) subtract the same “2” from the range
+    cb->i_range -= 2;
+    // 2) renormalize so that range>=256 and low has fresh bits
+    cabac_decode_renorm( cb );
+    // 3) we’ve now “consumed” the terminal bin;
+    //    no need to return a value
 }
 
 void x264_cabac_encode_flush( int frameNb, x264_cabac_t *cb )
@@ -1428,3 +1504,117 @@ void x264_cabac_encode_flush( int frameNb, x264_cabac_t *cb )
     }
 }
 
+void x264_cabac_decode_flush( x264_cabac_t *cb )
+{
+    int bits_in_queue = cb->i_queue & 7;
+    if( bits_in_queue )
+    {
+        cb->p++;
+        cb->i_queue -= bits_in_queue;
+    }
+    cb->i_queue = 0;
+}
+
+static inline int get_one_bit(cabac_bitstream_t *bs)
+{
+    if (bs->bits_left == 0)
+    {
+        if (bs->p < bs->p_end)
+        {
+            bs->bit_buffer = *bs->p++;
+            bs->bits_left = 8;
+        }
+        else { return 0; }
+    }
+    bs->bits_left--;
+    return (bs->bit_buffer >> bs->bits_left) & 1;
+}
+
+static inline void cabac_decode_renorm_correct(x264_cabac_t *cb, cabac_bitstream_t *bs)
+{
+    while (cb->i_range < 256)
+    {
+        cb->i_range <<= 1;
+        cb->i_low = (cb->i_low << 1) | get_one_bit(bs);
+    }
+}
+
+int x264_cabac_decode_decision(x264_cabac_t *cb, cabac_bitstream_t *bs, int i_ctx)
+{
+    int i_state = cb->state[i_ctx];
+    int i_range_lps = x264_cabac_range_lps[i_state >> 1][(cb->i_range >> 6) - 4];
+    int i_range_mps = cb->i_range - i_range_lps;
+    int bin;
+
+    if (cb->i_low >= i_range_mps)
+    {
+        bin = 1 ^ (i_state & 1);
+        cb->i_low -= i_range_mps;
+        cb->i_range = i_range_lps;
+    }
+    else
+    {
+        bin = (i_state & 1);
+        cb->i_range = i_range_mps;
+    }
+
+    cb->state[i_ctx] = x264_cabac_transition[i_state][bin];
+    cabac_decode_renorm_correct(cb, bs);
+    return bin;
+}
+void x264_cabac_decode_init(x264_cabac_t *cb, cabac_bitstream_t *bs, uint8_t *p_start, uint8_t *p_end)
+{
+    bs->p = p_start;
+    bs->p_end = p_end;
+    bs->bits_left = 0;
+    bs->bit_buffer = 0;
+
+    cb->i_range = 0x01FE; // 510
+
+    // Pre-load the first 9 bits into i_low as per the spec
+    cb->i_low = 0;
+    for (int i = 0; i < 9; i++)
+    {
+        cb->i_low = (cb->i_low << 1) | get_one_bit(bs);
+    }
+}
+int x264_cabac_decode_bypass(x264_cabac_t *cb, cabac_bitstream_t *bs)
+{
+    int bit;
+    // Arithmetic decoding with P(0) = P(1) = 0.5
+    // This means the range is split exactly in half.
+    int range_mps_equiv = cb->i_range >> 1; // Consider lower half as '0' region
+    int range_lps_equiv = cb->i_range - range_mps_equiv; // Upper half as '1' region
+
+    if (cb->i_low >= range_mps_equiv) { // Value is in the upper half
+        bit = 1;
+        cb->i_low -= range_mps_equiv;   // Adjust low
+        cb->i_range = range_lps_equiv;  // Adjust range
+    } else { // Value is in the lower half
+        bit = 0;
+        cb->i_range = range_mps_equiv;  // Adjust range
+    }
+    
+    // Use the correct renormalization function that uses get_one_bit
+    cabac_decode_renorm_correct(cb, bs);
+    return bit;
+}
+
+int x264_cabac_decode_ue_bypass(x264_cabac_t *cb, cabac_bitstream_t *bs, int exp_bits)
+{
+    int prefix = 0;
+    while (x264_cabac_decode_bypass(cb, bs) == 0)
+    {
+        prefix++;
+    }
+
+    uint32_t suffix = 0;
+    int bits = prefix + exp_bits;
+    for (int i = 0; i < bits; i++)
+    {
+        suffix = (suffix << 1) | x264_cabac_decode_bypass(cb, bs);
+    }
+
+    uint32_t codeNum = suffix + (1u << (prefix + exp_bits));
+    return (int)(codeNum - (1u << exp_bits));
+}

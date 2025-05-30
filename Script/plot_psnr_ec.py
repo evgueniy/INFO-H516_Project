@@ -6,6 +6,7 @@ import matplotlib.pyplot as plt
 import subprocess
 from bjontegaard import bd_rate, bd_psnr
 import re
+import utils
 
 def plot_all_intra_subplots(results, intraPeriod: list):
     num_intra = len(intraPeriod)
@@ -54,92 +55,77 @@ def plot_all_intra_subplots(results, intraPeriod: list):
     plt.tight_layout()
     plt.show()
 
-argSize = len(sys.argv)
-if argSize < 3:
-    print("too few arg, usage: file [all | qp1 qp2 qp3 qp4] encoder [optional second encoder]")
-    sys.exit(1)
-yuvFile = sys.argv[1]
-if not os.path.exists(yuvFile):
-    print(f"Error: file {yuvFile} does not exist.")
-    sys.exit(1)
-if sys.argv[2].lower() == "all":
-    if argSize not in (4, 5):
-        print("Error: for 'all' mode, usage: file all encoder [optional second encoder]")
-        sys.exit(1)
-    qps = [i for i in range(2, 49)]
-    if argSize == 4:
-        encoders = [sys.argv[3]]
-    else:
-        encoders = [sys.argv[3], sys.argv[4]]
-else:
-    if argSize not in (7, 8):
-        print("Error: for explicit qp mode, usage: file qp1 qp2 qp3 qp4 encoder [optional second encoder]")
-        sys.exit(1)
-    qps = [int(sys.argv[i]) for i in range(2, 6)]
-    if argSize == 7:
-        encoders = [sys.argv[6]]
-    else:
-        encoders = [sys.argv[6], sys.argv[7]]
-enc_map = {"original": "0", "abac": "1", "huffman": "2","cabac":"3"}
-encs = {}
-for enc in encoders:
-    enc_lower = enc.lower()
-    if enc_lower not in enc_map:
-        print("Invalid encoding option. Must be one of original, cabac, huffman")
-        sys.exit(1)
-    encs[enc_lower] = enc_map[enc_lower]
+def main(path: str, qps: list[int], entropyCoders: list[str]):
+    # == setup 
+    mode = "Debug"
+    file = utils.YUV(path)
+    encoders = [utils.ICSPCodec(ec,mode) for ec in entropyCoders]
+    encoders[0].getICSPWorkDir()
+    intraPeriod = [0,8,16,32,300]
+    results = dict()
+    # ==
+    print(f"File: {file.getFileName()}\n--> Qp's: {qps} for inter values: [0,8,16,32,300]")
+    # == loop and generate missing files necessary for comparison
+    for i in range(len(encoders)):
+        bitrate = {f"bitrate_{ip}": [] for ip in intraPeriod}
+        psnrs = {f"psnr_{ip}": [] for ip in intraPeriod}
+        ICSP = encoders[i]
+        for qp in qps:
+            for period in intraPeriod:
+                csvFilename = f"../../results/{file.getSequenceName()}_{qp}_{qp}_{period}_{ICSP.getEntropyCoderID()}.csv"
+                bin = f"../../results/{file.getSequenceName()}_comp{file.getFormat().upper()}" \
+                    + f"_{qp}_{qp}_{period}_{ICSP.getEntropyCoderID()}.bin"
+                # = if one of the file csv or bin is missing we try to generate a new one 
+                if not os.path.exists(csvFilename) or not os.path.exists(bin):
+                    ICSP.run(file, qp, period)
+                else:
+                    print(f"Data for qp: {qp} - intraPeriod: {period} exists skipping generation..")
+                # == data retrieval
+                dataFrame = pd.read_csv(csvFilename, sep=";", decimal=".")
+                # = avg psnr from last col
+                psnr = dataFrame['AvgPSNR'].iloc[-1]
+                print(f"avg psnr {psnr}")
+                # = size in bits of compressed video file
+                size = os.path.getsize(bin) * 8
+                # = throughput in megabits per second
+                mbps = round((size / file.getDuration()) / (1000**2), 2)
+                bitrate[f'bitrate_{period}'].append(mbps)
+                psnrs[f'psnr_{period}'].append(psnr)
+        results[ICSP.getEntropyCoder()] = {"bitrate": bitrate, "psnr": psnrs}
+    plot_all_intra_subplots(results, intraPeriod)
 
-res = {"qcif": (str(352//2),str(288//2)), "cif": (str(352),str(288)), "4cif": (str(352*2),str(288*2)) }
-fileName = os.path.basename(yuvFile)
-pattern = r"(.*)_([4|Q|q]?cif)[(]*[a-zA-Z0-9]*[)]*_([0-9]+)f"
-match = re.search(pattern, fileName)
-name = match.group(1)
-format = match.group(2)
-width = res[format][0]
-height = res[format][1]
-nFrames = match.group(3)
-fps = 30 if match.group(2) == "cif" else 60
-exec_type = "Debug"
-# changing to avoid building proper path in c code :) 
-print("Before change:", os.getcwd())
-os.chdir(f"../ICSPCodec/build/{exec_type}/")
-print("After change:", os.getcwd())
-print(f"File: {yuvFile}\n--> Qp's: {qps} for inter values: [0, 8, 16, 32, 300]")
-yuvFile = f"../../data/{os.path.basename(yuvFile)}"
-print(f"File after change: {yuvFile}\n--> Qp's: {qps} for inter values: [0, 8, 16, 32, 300]")
-intraPeriod = [0, 8, 16, 32, 300]
-results = {}
-for enc in encs:
-    bitrate = {f"bitrate_{ip}": [] for ip in intraPeriod}
-    psnrs = {f"psnr_{ip}": [] for ip in intraPeriod}
-    for i in range(len(qps)):
-        for j in range(len(intraPeriod)):
-            csvFilename = f"../../results/{name}_{qps[i]}_{qps[i]}_{intraPeriod[j]}_{encs[enc]}.csv"
-            if not os.path.exists(csvFilename):
-                print(f"Generating data for qp: {qps[i]} - inter: {intraPeriod[j]} - encoder: {enc}")
-                commandArgs = [f"{os.getcwd()}/ICSPCodec", "-i", yuvFile, "-n", str(nFrames), "-q", f"{qps[i]}",
-                               "--intraPeriod", f"{intraPeriod[j]}", "--EnMultiThread", "0", "-e", enc,"-w", width, "-h", height]
-                subprocess.run(commandArgs, capture_output=True, text=True, cwd=os.getcwd())
-            else:
-                print(f"Data for qp: {qps[i]} - inter: {intraPeriod[j]} exists skipping..")
-    for qp in qps:
-        for intra in intraPeriod:
-            csvFilename = f"../../results/{name}_{qp}_{qp}_{intra}_{encs[enc]}.csv"
-            print(f"reading: {csvFilename}")
-            if not os.path.exists(csvFilename):
-                print(f"Error: file {csvFilename} does not exist.")
+
+
+if __name__ == "__main__":
+    # == arg verification
+    argSize = len(sys.argv)
+    if argSize < 3:
+        print("too few arg, usage: file [all | qp1 qp2 qp3 qp4] encoder [optional second encoder]")
+        sys.exit(1)
+    yuvFile = sys.argv[1]
+    if not os.path.exists(yuvFile):
+        print(f"Error: file {yuvFile} does not exist.")
+        sys.exit(1)
+    if sys.argv[2].lower() == "all":
+        if argSize not in (4, 5):
+            print("Error: for 'all' mode, usage: file all encoder [optional second encoder]")
+            sys.exit(1)
+        qps = [i for i in range(2, 49)]
+        if argSize == 4:
+            encoders = [sys.argv[3]]
+        else:
+            encoders = [sys.argv[3], sys.argv[4]]
+    else:
+        if argSize not in (7, 8):
+            print("Error: for explicit qp mode, usage: file qp1 qp2 qp3 qp4 encoder [optional second encoder]")
+            sys.exit(1)
+        qps = [int(sys.argv[i]) for i in range(2, 6)]
+        if argSize == 7:
+            encoders = [sys.argv[6].lower()]
+        else:
+            encoders = [sys.argv[6].lower(), sys.argv[7].lower()]
+        for ec in encoders:
+            if ec not in ("cabac","original","abac","huffman"):
+                print("Error: encoder(s) must be either cabac,original,abac,huffman")
                 sys.exit(1)
-            dataFrame = pd.read_csv(csvFilename, sep=";", decimal=".")
-            psnr = dataFrame["AvgPSNR"].iloc[-1]
-            print(f"avg psnr {psnr}")
-            binPath = f"../../results/{name}_comp{format.upper()}_{qp}_{qp}_{intra}_{encs[enc]}.bin"
-            try:
-                size = os.path.getsize(binPath) * 8
-            except Exception as e:
-                print(f"Error reading file {binPath}: {e}")
-                size = 0
-            mbps = round((size / (nFrames/fps)) / (1000**2), 2)
-            bitrate[f"bitrate_{intra}"].append(mbps)
-            psnrs[f"psnr_{intra}"].append(psnr)
-    results[enc] = {"bitrate": bitrate, "psnr": psnrs}
-plot_all_intra_subplots(results, intraPeriod)
+    main(yuvFile, qps, encoders)
