@@ -16,8 +16,8 @@ res = {"qcif": (str(352//2),str(288//2)), "cif": (str(352),str(288)), "4cif": (s
 pattern = r"(.*)_([4|Q|q]?cif)[(]*[a-zA-Z0-9]*[)]*_([0-9]+)f" 
 output_dir = "scalable_output"
 yuv_name = sys.argv[1]
-# exec_type = 'Debug'
-exec_type = 'Release'
+exec_type = 'Debug'
+# exec_type = 'Release'
 # changing to avoid building proper path in c code :) 
 print("Before change:", os.getcwd())
 os.chdir(f"../ICSPCodec/build/{exec_type}/")
