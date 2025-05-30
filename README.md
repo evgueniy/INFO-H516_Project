@@ -98,15 +98,11 @@ section, but they could be easily adapted to other videos and settings.
 ### Plot bitsizes and PSNR / frame
 
 ```bash
-python3 plot_entropy.py table_16_16_8_0.csv
-```
-
-### Plot only bitsizes / frame
-
-```bash
 python3 plot_normal.py table_16_16_8_0.csv
 python3 plot_log.py table_16_16_8_0.csv
 ```
+
+One can give the `-nopsnr` argument at the end to show only bitsizes.
 
 ### Plot only PSNR / frame
 
