@@ -38,371 +38,414 @@ int readHeader(IcspCodec& icC, header &hd, FILE* fp)
 }
 int readBlockData(IcspCodec& icC, FILE* fp)
 {
-	int byteslength=0;
-	int totalbits=0;
-	while(fgetc(fp)!=EOF)
-	{
-		byteslength++;
-	}
-	totalbits = byteslength*8;
+    bool isCabac = icC.decoder == EntropyCoding::Cabac;
+    if(isCabac) {
+        x264_cabac_init();
+    }
 
-	//cout << "��ü bits: " << totalbits << " ��ü ����Ʈ�� : " << byteslength << endl;
-	fseek(fp, sizeof(header), SEEK_SET);
-	unsigned char* bodystream = (unsigned char*)calloc( byteslength, sizeof(unsigned char) ); // ����� ��� �����ӿ� ���� body
-	if(bodystream==NULL)
-	{
-		cout << "fail to allocate bodystream memory" << endl;
-		return -1;
-	}
+    fseek(fp, 0, SEEK_END);
+    long fileSize = ftell(fp);
+    if (fileSize < (long)sizeof(header)) {
+        return -1;
+    }
+    long byteslength = fileSize - sizeof(header); // This is the body size
+    fseek(fp, sizeof(header), SEEK_SET);
 
-	for(int i=0; i<byteslength; i++)
-		bodystream[i] = fgetc(fp);
+    if (byteslength <= 0) {
+        return -1;
+    }
 
-	unsigned char* bitchar = (unsigned char*)calloc( totalbits, sizeof(unsigned char) );
-	if(bitchar==NULL)
-	{
-		cout << "fail to allocate bodystream memory" << endl;
-		return -1;
-	}
+    unsigned char* bodystream = (unsigned char*)calloc(byteslength , sizeof(unsigned char));
+    if(bodystream==NULL) {
+        return -1;
+    }
+    if (fread(bodystream, 1, byteslength, fp) != (size_t)byteslength) {
+        free(bodystream);
+        return -1;
+    }
+    // memset(bodystream + byteslength, 0, X264_CABAC_ZERO_PADDING);
 
-	int idx=0;
-	for(int i=0; i<byteslength; i++)
-	{
-		for(int n=7; n>=0; n--)
-		{
-			bitchar[idx++] = (bodystream[i]>>n)&1;
-		}
-	}
 
-	int maxframes = MAXFRAMES;
-	int nframes = icC.nframes;
-	int blocksize1 = icC.dframes->blocksize1;
-	int blocksize2 = icC.dframes->blocksize2;
+    unsigned char* bitchar = NULL;
+    int totalbits = 0;
+    int cntidx = 0;
 
-	int totalblck = icC.dframes->nblocks16;
-	int nblckloop = icC.dframes->nblckloop;
+    if (!isCabac) {
+        totalbits = byteslength * 8;
+        bitchar = (unsigned char*)calloc(totalbits, sizeof(unsigned char));
+        if(bitchar==NULL) {
+            free(bodystream);
+            return -1;
+        }
+        int idx_fill = 0;
+        for(long i=0; i < byteslength; i++) {
+            for(int n=7; n>=0; n--) {
+                if (idx_fill < totalbits) {
+                    bitchar[idx_fill++] = (bodystream[i]>>n)&1;
+                }
+            }
+        }
+    }
 
-	
-	int cntidx=0;
-	int cntblck=0;
-	int frmbits=0;
-	int prevbits=0;
-	IntrabodyY	  intrabdY;
-	IntrabodyCbCr intrabdCb; 
-	IntrabodyCbCr intrabdCr;
+    int nframes = icC.nframes;
+    int blocksize1 = icC.dframes->blocksize1;
+    int blocksize2 = icC.dframes->blocksize2;
+    int totalblck = icC.dframes->nblocks16;
+    int nblckloop = icC.dframes->nblckloop;
 
-	InterbodyY	  interbdY;
-	InterbodyCbCr interbdCb;
-	InterbodyCbCr interbdCr;
+    IntrabodyY    intrabdY;
+    IntrabodyCbCr intrabdCb;
+    IntrabodyCbCr intrabdCr;
 
-	// all intra prediction
-	if(icC.intraPeriod==1)
-	{
-		for(int n=0; n<nframes; n++)
-		{
-			icC.dframes[n].dblocks   = (DBlockData*)malloc(sizeof(DBlockData)*totalblck);	// �پ��� free
-			icC.dframes[n].dcbblocks = (DCBlockData*)malloc(sizeof(DCBlockData)*totalblck);
-			icC.dframes[n].dcrblocks = (DCBlockData*)malloc(sizeof(DCBlockData)*totalblck);
-			prevbits = cntidx; // bits �� Ȯ���Ϸ���
+    InterbodyY    interbdY;
+    InterbodyCbCr interbdCb;
+    InterbodyCbCr interbdCr;
 
-			// Y channel
-			for(int nblck16=0; nblck16<totalblck; nblck16++)
-			{
-				DBlockData& dbd = icC.dframes[n].dblocks[nblck16];
+    uint8_t* cabacStart = bodystream; // Start of the current CABAC payload for a frame
+    uint8_t* cabacEnd   = bodystream + byteslength; // End of the *entire* loaded bitstream data
 
-				for(int nblck=0; nblck<nblckloop; nblck++)
-				{
-					intrabdY.mpmflag = bitchar[cntidx++];				// mpmflag ����	
-					intrabdY.intraPredictionMode = bitchar[cntidx++];   // intra prediction mode ����
+    if(icC.intraPeriod==1) // All Intra frames
+    {
+        for(int n=0; n<nframes; n++)
+        {
+            x264_cabac_t cb;
+            cabac_bitstream_t bs_dec;
 
-					// DC�� decoding
-					int DCbits=0;
-					DCbits = DCientropy(&bitchar[cntidx], intrabdY);
-					cntidx += DCbits;
+            if (isCabac) {
+                x264_cabac_context_init(&cb, SLICE_TYPE_I, icC.QstepDC, 0);
+                x264_cabac_decode_init(&cb, &bs_dec, cabacStart, cabacEnd);
+            }
 
-					intrabdY.ACflag = bitchar[cntidx++];  // ACflag ����
-				
-					// AC�� decoding
-					if(intrabdY.ACflag == 1)
-					{
-						cntidx += 63;
-						for(int i=0; i<63; i++)
-							intrabdY.ACvals[i] = 0;
-					}
-					else if(intrabdY.ACflag == 0)
-					{
-						int ACbits=0;
-						ACbits = ACientropy(&bitchar[cntidx], intrabdY);
-						cntidx += ACbits;
-					}				
-					intraDblckDataInit(dbd, intrabdY, nblck, blocksize1, blocksize2);
-				}
+            icC.dframes[n].dblocks   = (DBlockData*)malloc(sizeof(DBlockData)*totalblck);
+            icC.dframes[n].dcbblocks = (DCBlockData*)malloc(sizeof(DCBlockData)*totalblck);
+            icC.dframes[n].dcrblocks = (DCBlockData*)malloc(sizeof(DCBlockData)*totalblck);
+             if (!icC.dframes[n].dblocks || !icC.dframes[n].dcbblocks || !icC.dframes[n].dcrblocks) {
+                free(bodystream); if (bitchar) free(bitchar); return -1;
+            }
 
-				// Cb Cr channels
-				{
-					DCBlockData& dcbbd = icC.dframes[n].dcbblocks[nblck16];
-					int DCbits=0;
-					DCbits = DCientropy(&bitchar[cntidx], intrabdCb);
-					cntidx += DCbits;
+            for(int nblck16=0; nblck16<totalblck; nblck16++)
+            {
+                DBlockData& dbd = icC.dframes[n].dblocks[nblck16];
+                for(int nblck=0; nblck<nblckloop; nblck++) // nblck here is the 8x8 sub-block index (0-3)
+                {
+                    if (isCabac){
+                        intrabdY.mpmflag = x264_cabac_decode_decision(&cb, &bs_dec, CTX_MPM_FLAG);
+                        intrabdY.intraPredictionMode = x264_cabac_decode_decision(&cb, &bs_dec, CTX_INTRA_PRED);
 
-					intrabdCb.ACflag = bitchar[cntidx++];  // ACflag ����
+                        int hasDC = x264_cabac_decode_decision(&cb, &bs_dec, CTX_IDX_DC);
+                        intrabdY.DCval = 0;
+                        if (hasDC){
+                            int abs_val = x264_cabac_decode_ue_bypass(&cb, &bs_dec, 0);
+                            intrabdY.DCval = x264_cabac_decode_bypass(&cb, &bs_dec) ? -abs_val : abs_val;
+                        }
 
-					// AC�� decoding
-					if(intrabdCb.ACflag == 1)
-					{
-						cntidx += 63;
-						for(int i=0; i<63; i++)
-							intrabdCb.ACvals[i] = 0;
-					}
-					else if(intrabdCb.ACflag == 0)
-					{
-						int ACbits=0;
-						ACbits = ACientropy(&bitchar[cntidx], intrabdCb);
-						cntidx += ACbits;
-					}
-					intraDCblckDataInit(dcbbd, intrabdCb, blocksize2);
-				}
+                        int ac_coeffs_present = x264_cabac_decode_decision(&cb, &bs_dec, CTX_AC_PRESENT);
+                        intrabdY.ACflag = ac_coeffs_present;
 
-				{
-					DCBlockData& dcrbd = icC.dframes[n].dcrblocks[nblck16];
-					int DCbits=0;
-					DCbits = DCientropy(&bitchar[cntidx], intrabdCr);
-					cntidx += DCbits;
+                        if (intrabdY.ACflag == 1) {
+                            for (int i = 0; i < 63; i++){
+                                x264_cabac_decode_decision(&cb, &bs_dec, CTX_IDX_AC_START + i);
+                                intrabdY.ACvals[i] = 0;
+                            }
+                        } else {
+                            for (int i = 0; i < 63; i++){
+                                int acNZero = x264_cabac_decode_decision(&cb, &bs_dec, CTX_IDX_AC_START + i);
+                                intrabdY.ACvals[i] = 0;
+                                if (acNZero) {
+                                    int abs_val = x264_cabac_decode_ue_bypass(&cb, &bs_dec, 0);
+                                    intrabdY.ACvals[i] = x264_cabac_decode_bypass(&cb, &bs_dec) ? -abs_val : abs_val;
+                                }
+                            }
+                        }
+                    } else { // Non-CABAC path
+                        intrabdY.mpmflag = bitchar[cntidx++];
+                        intrabdY.intraPredictionMode = bitchar[cntidx++];
+                        cntidx += DCientropy(&bitchar[cntidx], intrabdY);
+                        intrabdY.ACflag = bitchar[cntidx++];
+                        if(intrabdY.ACflag == 1) {
+                            cntidx += 63;
+                            for(int i=0; i<63; i++) intrabdY.ACvals[i] = 0;
+                        } else {
+                            cntidx += ACientropy(&bitchar[cntidx], intrabdY);
+                        }
+                    }
+                    intraDblckDataInit(dbd, intrabdY, nblck, blocksize1, blocksize2);
+                } // End Y 8x8 sub-blocks loop
 
-					intrabdCr.ACflag = bitchar[cntidx++];  // ACflag ����
+                // Cb and Cr channels
+                for (int plane = 0; plane < 2; plane++) {
+                    IntrabodyCbCr& currentCbCrBody = (plane == 0) ? intrabdCb : intrabdCr;
+                    DCBlockData& currentDCBlockData = (plane == 0) ? icC.dframes[n].dcbblocks[nblck16] : icC.dframes[n].dcrblocks[nblck16];
+                    if (isCabac) {
+                        int hasDC = x264_cabac_decode_decision(&cb, &bs_dec, CTX_IDX_DC);
+                        currentCbCrBody.DCval = 0;
+                        if (hasDC) {
+                            int abs_val = x264_cabac_decode_ue_bypass(&cb, &bs_dec, 0);
+                            currentCbCrBody.DCval = x264_cabac_decode_bypass(&cb, &bs_dec) ? -abs_val : abs_val;
+                        }
+                        int ac_coeffs_present = x264_cabac_decode_decision(&cb, &bs_dec, CTX_AC_PRESENT);
+                        currentCbCrBody.ACflag = ac_coeffs_present;
+                        if (currentCbCrBody.ACflag == 1) {
+                            for (int i = 0; i < 63; i++) {
+                                x264_cabac_decode_decision(&cb, &bs_dec, CTX_IDX_AC_START + i);
+                                currentCbCrBody.ACvals[i] = 0;
+                            }
+                        } else {
+                            for (int i = 0; i < 63; i++) {
+                                int acNZero = x264_cabac_decode_decision(&cb, &bs_dec, CTX_IDX_AC_START + i);
+                                currentCbCrBody.ACvals[i] = 0;
+                                if (acNZero) {
+                                    int abs_val = x264_cabac_decode_ue_bypass(&cb, &bs_dec, 0);
+                                    currentCbCrBody.ACvals[i] = x264_cabac_decode_bypass(&cb, &bs_dec) ? -abs_val : abs_val;
+                                }
+                            }
+                        }
+                    } else { // Non-CABAC
+                        cntidx += DCientropy(&bitchar[cntidx], currentCbCrBody);
+                        currentCbCrBody.ACflag = bitchar[cntidx++];
+                        if(currentCbCrBody.ACflag == 1) {
+                            cntidx += 63;
+                            for(int i=0; i<63; i++) currentCbCrBody.ACvals[i] = 0;
+                        } else {
+                            cntidx += ACientropy(&bitchar[cntidx], currentCbCrBody);
+                        }
+                    }
+                    intraDCblckDataInit(currentDCBlockData, currentCbCrBody, blocksize2);
+                } // End Cb/Cr plane loop
+            } // End nblck16 loop (macroblocks)
 
-					// AC�� decoding
-					if(intrabdCr.ACflag == 1)
-					{
-						cntidx += 63;
-						for(int i=0; i<63; i++)
-							intrabdCr.ACvals[i] = 0;
-					}
-					else if(intrabdCr.ACflag == 0)
-					{
-						int ACbits=0;
-						ACbits = ACientropy(&bitchar[cntidx], intrabdCr);
-						cntidx += ACbits;
-					}
-					intraDCblckDataInit(dcrbd, intrabdCr, blocksize2);
-				}
-			}		
-		}
-	}
-	else	// not all intra prediction mode
-	{
-		for(int n=0; n<nframes; n++)
-		{
-			icC.dframes[n].dblocks   = (DBlockData*)malloc(sizeof(DBlockData)*totalblck);	// �پ��� free
-			icC.dframes[n].dcbblocks = (DCBlockData*)malloc(sizeof(DCBlockData)*totalblck);
-			icC.dframes[n].dcrblocks = (DCBlockData*)malloc(sizeof(DCBlockData)*totalblck);
-			prevbits = cntidx; // bits �� Ȯ���Ϸ���
+            if (isCabac) {
+                x264_cabac_decode_terminal(&cb);
+                x264_cabac_decode_flush(&cb);
+                cabacStart = bs_dec.p;// Update cabacStart for the next frame's payload
+            }
+        } // End nframes loop
+    }
+    else  // Inter prediction mode (mix of I and P frames)
+    {
+        for(int n=0; n<nframes; n++)
+        {
+            icC.dframes[n].dblocks   = (DBlockData*)malloc(sizeof(DBlockData)*totalblck);
+            icC.dframes[n].dcbblocks = (DCBlockData*)malloc(sizeof(DCBlockData)*totalblck);
+            icC.dframes[n].dcrblocks = (DCBlockData*)malloc(sizeof(DCBlockData)*totalblck);
+             if (!icC.dframes[n].dblocks || !icC.dframes[n].dcbblocks || !icC.dframes[n].dcrblocks) {
+                free(bodystream); if (bitchar) free(bitchar); return -1;
+            }
+			// cabac decoder setup
+			x264_cabac_t cb;
+            cabac_bitstream_t bs_dec;
+            int currentFrameType = (n % icC.intraPeriod == 0) ? SLICE_TYPE_I : SLICE_TYPE_P;
+			printf("Starting frame= %d with frametype= %s intraP: %d\n",n,(currentFrameType == 2 ? "I" : "P"), icC.intraPeriod);
+            if (isCabac) {
+                x264_cabac_context_init(&cb, currentFrameType, icC.QstepDC, 0);
+                x264_cabac_decode_init(&cb, &bs_dec, cabacStart, cabacEnd);
+            }
 
-			// intra prediction 
-			printf("icC Intraperiod %d\n",icC.intraPeriod);
-			if(n%icC.intraPeriod==0)
-			{
-				// Y channel				
-				//cout << n << "��° intra frame bits: " << cntidx << endl;
-				for(int nblck16=0; nblck16<totalblck; nblck16++)
-				{
-					DBlockData& dbd = icC.dframes[n].dblocks[nblck16];
+            if(currentFrameType == SLICE_TYPE_I) // I-frame in Inter sequence
+            {
+                for(int nblck16=0; nblck16<totalblck; nblck16++) {
+                    DBlockData& dbd = icC.dframes[n].dblocks[nblck16];
+                    for(int nblck=0; nblck<nblckloop; nblck++) {
+                        if (isCabac) {
+                            intrabdY.mpmflag = x264_cabac_decode_decision(&cb, &bs_dec, CTX_MPM_FLAG);
+                            intrabdY.intraPredictionMode = x264_cabac_decode_decision(&cb, &bs_dec, CTX_INTRA_PRED);
+                            int hasDC = x264_cabac_decode_decision(&cb, &bs_dec, CTX_IDX_DC);
+                            intrabdY.DCval = 0; 
+							if(hasDC){
+								int abs_val = x264_cabac_decode_ue_bypass(&cb,&bs_dec,0); 
+								intrabdY.DCval = x264_cabac_decode_bypass(&cb,&bs_dec) ? -abs_val : abs_val;
+							}
+                            intrabdY.ACflag= x264_cabac_decode_decision(&cb,&bs_dec,CTX_AC_PRESENT);
+                            if(intrabdY.ACflag){
+								for(int i=0;i<63;i++){
+									x264_cabac_decode_decision(&cb,&bs_dec,CTX_IDX_AC_START+i);
+									intrabdY.ACvals[i] = 0;
+								}
+							}
+                            else{
+								for(int i=0;i<63;i++){
+									int nz = x264_cabac_decode_decision(&cb,&bs_dec,CTX_IDX_AC_START+i);
+									intrabdY.ACvals[i] = 0;
+									if(nz){
+										int abs_val = x264_cabac_decode_ue_bypass(&cb,&bs_dec,0);
+										intrabdY.ACvals[i] = x264_cabac_decode_bypass(&cb,&bs_dec) ? -abs_val : abs_val;
+									}
+								}
+							}
+                        } 
+						else {
+                            intrabdY.mpmflag = bitchar[cntidx++]; 
+							intrabdY.intraPredictionMode = bitchar[cntidx++];
+                            cntidx+=DCientropy(&bitchar[cntidx],intrabdY);
+							intrabdY.ACflag=bitchar[cntidx++]; 
+                            if(intrabdY.ACflag){
+								cntidx+=63;
+								for(int i=0;i<63;i++)
+									intrabdY.ACvals[i]=0;
+							}
+							else{
+								cntidx += ACientropy(&bitchar[cntidx],intrabdY);
+							} 
+                        }
+                        intraDblckDataInit(dbd, intrabdY, nblck, blocksize1, blocksize2);
+                    }
+                    for (int plane=0; plane<2; ++plane) {
+                        IntrabodyCbCr& cCbCr = (plane==0) ? intrabdCb : intrabdCr;
+                        DCBlockData& cDCBlk = (plane==0) ? icC.dframes[n].dcbblocks[nblck16] : icC.dframes[n].dcrblocks[nblck16];
+                        if (isCabac) {
+                            int hasDC = x264_cabac_decode_decision(&cb, &bs_dec, CTX_IDX_DC);
+                            cCbCr.DCval=0; 
+							if(hasDC){
+								int abs_val=x264_cabac_decode_ue_bypass(&cb,&bs_dec,0);
+								cCbCr.DCval=x264_cabac_decode_bypass(&cb,&bs_dec)?-abs_val:abs_val;
+							}
+                            cCbCr.ACflag=x264_cabac_decode_decision(&cb,&bs_dec,CTX_AC_PRESENT);
+                            if(cCbCr.ACflag){
+								for(int i=0;i<63;i++){
+									x264_cabac_decode_decision(&cb,&bs_dec,CTX_IDX_AC_START+i);
+									cCbCr.ACvals[i]=0;
+								}
+							}
+                            else{
+								for(int i=0;i<63;i++){
+									int nz=x264_cabac_decode_decision(&cb,&bs_dec,CTX_IDX_AC_START+i);
+									cCbCr.ACvals[i]=0;if(nz){
+										int abs_val=x264_cabac_decode_ue_bypass(&cb,&bs_dec,0);
+										cCbCr.ACvals[i]=x264_cabac_decode_bypass(&cb,&bs_dec)?-abs_val:abs_val;
+									}
+								}
+							}
+                        } 
+						else {
+                            cntidx+=DCientropy(&bitchar[cntidx],cCbCr);
+							cCbCr.ACflag=bitchar[cntidx++]; 
+                            if(cCbCr.ACflag){
+								cntidx+=63;
+								for(int i=0;i<63;i++)
+									cCbCr.ACvals[i]=0;
+							}
+							else{
+								cntidx+=ACientropy(&bitchar[cntidx],cCbCr);
+							} 
+                        }
+                        intraDCblckDataInit(cDCBlk, cCbCr, blocksize2); 
+                    }
+                }
+            }
+            else // P-frame
+            {
+                for(int nblck16=0; nblck16<totalblck; nblck16++)
+                {
+                    DBlockData& dbd = icC.dframes[n].dblocks[nblck16];
+                    if (isCabac) {
+                        dbd.MVmodeflag = x264_cabac_decode_decision(&cb, &bs_dec, CTX_MV_FLAG);
+                        int abs_mvx = x264_cabac_decode_ue_bypass(&cb, &bs_dec, 0);
+                        dbd.Reconstructedmv.x = x264_cabac_decode_bypass(&cb, &bs_dec) ? -abs_mvx : abs_mvx;
+                        int abs_mvy = x264_cabac_decode_ue_bypass(&cb, &bs_dec, 0);
+                        dbd.Reconstructedmv.y = x264_cabac_decode_bypass(&cb, &bs_dec) ? -abs_mvy : abs_mvy;
+                    } else { // Non-CABAC
+                        dbd.MVmodeflag = bitchar[cntidx++];
+                        cntidx += MVientropy(&bitchar[cntidx], dbd.Reconstructedmv);
+                    }
 
-					//cout << nblck16 << " blocks" << endl;
-					for(int nblck=0; nblck<nblckloop; nblck++)
-					{
-						intrabdY.mpmflag = bitchar[cntidx++];				// mpmflag ����	
-						intrabdY.intraPredictionMode = bitchar[cntidx++];   // intra prediction mode ����
+                    // Residual decoding for Y
+                    for(int nblck=0; nblck<nblckloop; nblck++) {
+                        if (isCabac) {
+                            int hasDC = x264_cabac_decode_decision(&cb, &bs_dec, CTX_IDX_DC);
+                            interbdY.DCval = 0; 
+							if(hasDC){
+								int abs_val = x264_cabac_decode_ue_bypass(&cb,&bs_dec,0); 
+								interbdY.DCval = x264_cabac_decode_bypass(&cb,&bs_dec)? -abs_val : abs_val;
+							}
+                            interbdY.ACflag= x264_cabac_decode_decision(&cb,&bs_dec,CTX_AC_PRESENT);
+                            if(interbdY.ACflag){
+								for(int i=0;i<63;i++){
+									x264_cabac_decode_decision(&cb,&bs_dec,CTX_IDX_AC_START+i);
+									interbdY.ACvals[i] = 0;
+								}
+							}
+                            else{
+								for(int i=0;i<63;i++){
+									int nz = x264_cabac_decode_decision(&cb,&bs_dec,CTX_IDX_AC_START+i);
+									interbdY.ACvals[i] = 0;
+									if(nz){
+										int abs_val = x264_cabac_decode_ue_bypass(&cb,&bs_dec,0);
+										interbdY.ACvals[i] = x264_cabac_decode_bypass(&cb,&bs_dec)? -abs_val : abs_val;
+									}
+								}
+							}
+                        } 
+						else { // Non-CABAC
+                            cntidx+=DCientropy(&bitchar[cntidx],interbdY);
+							interbdY.ACflag=bitchar[cntidx++];
+                            if(interbdY.ACflag){
+								cntidx += 63;
+								for(int i=0;i<63;i++)
+									interbdY.ACvals[i] = 0;
+							}
+							else{
+								cntidx += ACientropy(&bitchar[cntidx],interbdY);
+							} 
+                        }
+                        interDblckDataInit(dbd, interbdY, nblck, blocksize1, blocksize2);
+                    }
+                     // Residual decoding for Cb, Cr
+                    for (int plane=0; plane<2; ++plane) {
+                        InterbodyCbCr& cCbCr = (plane==0) ? interbdCb : interbdCr;
+                        DCBlockData& cDCBlk = (plane==0) ? icC.dframes[n].dcbblocks[nblck16] : icC.dframes[n].dcrblocks[nblck16];
+                        if (isCabac) {
+                            int hasDC = x264_cabac_decode_decision(&cb, &bs_dec, CTX_IDX_DC);
+                            cCbCr.DCval=0; 
+							if(hasDC){
+								int abs_val = x264_cabac_decode_ue_bypass(&cb,&bs_dec,0);
+								cCbCr.DCval = x264_cabac_decode_bypass(&cb,&bs_dec)? -abs_val : abs_val;
+							}
+                            cCbCr.ACflag = x264_cabac_decode_decision(&cb,&bs_dec,CTX_AC_PRESENT);
+                            if(cCbCr.ACflag){
+								for(int i=0;i<63;i++){
+									x264_cabac_decode_decision(&cb,&bs_dec,CTX_IDX_AC_START+i);
+									cCbCr.ACvals[i]=0;
+								}
+							}
+                            else{
+								for(int i=0;i<63;i++){
+									int nz=x264_cabac_decode_decision(&cb,&bs_dec,CTX_IDX_AC_START+i);
+									cCbCr.ACvals[i]=0;
+									if(nz){
+										int abs_val=x264_cabac_decode_ue_bypass(&cb,&bs_dec,0);
+										cCbCr.ACvals[i]=x264_cabac_decode_bypass(&cb,&bs_dec)?-abs_val:abs_val;
+									}
+								}
+							}
+                        } 
+						else { // Non-CABAC
+                            cntidx+=DCientropy(&bitchar[cntidx],cCbCr);
+							cCbCr.ACflag=bitchar[cntidx++]; 
+                            if(cCbCr.ACflag){
+								cntidx+=63;
+								for(int i=0;i<63;i++)
+									cCbCr.ACvals[i]=0;
+							}
+							else{
+								cntidx+=ACientropy(&bitchar[cntidx],cCbCr);
+							}
+                        }
+                        interDCblckDataInit(cDCBlk, cCbCr, blocksize2); 
+                    }
+                } // End nblck16 loop for P-frame
+            } // End if P-frame
 
-						// DC�� decoding
-						int DCbits=0;
-						DCbits = DCientropy(&bitchar[cntidx], intrabdY);
-						cntidx += DCbits;
+            if (isCabac) {
+                x264_cabac_decode_terminal(&cb);
+                x264_cabac_decode_flush(&cb);
+                cabacStart = bs_dec.p;// Update cabacStart for the next frame's payload
+            }
+        } // End nframes loop for inter sequence
+    } // End if/else intraPeriod
 
-						//cout << "Y dc bits: " << cntidx << endl;
-
-						intrabdY.ACflag = bitchar[cntidx++];  // ACflag ����
-
-						// AC�� decoding
-						if(intrabdY.ACflag == 1)
-						{
-							cntidx += 63;
-							for(int i=0; i<63; i++)
-								intrabdY.ACvals[i] = 0;
-						}
-						else if(intrabdY.ACflag == 0)
-						{
-							int ACbits=0;
-							ACbits = ACientropy(&bitchar[cntidx], intrabdY);
-							cntidx += ACbits;
-						}				
-						intraDblckDataInit(dbd, intrabdY, nblck, blocksize1, blocksize2);
-						//cout << "Y ac bits: " << cntidx << endl;
-					}
-
-					// Cb Cr channels
-					{
-						DCBlockData& dcbbd = icC.dframes[n].dcbblocks[nblck16];
-						int DCbits=0;
-						DCbits = DCientropy(&bitchar[cntidx], intrabdCb);
-						cntidx += DCbits;
-
-						//cout << "cb dc bits: " << cntidx << endl;
-
-						intrabdCb.ACflag = bitchar[cntidx++];  // ACflag ����
-
-						// AC�� decoding
-						if(intrabdCb.ACflag == 1)
-						{
-							cntidx += 63;
-							for(int i=0; i<63; i++)
-								intrabdCb.ACvals[i] = 0;
-						}
-						else if(intrabdCb.ACflag == 0)
-						{
-							int ACbits=0;
-							ACbits = ACientropy(&bitchar[cntidx], intrabdCb);
-							cntidx += ACbits;
-						}
-						intraDCblckDataInit(dcbbd, intrabdCb, blocksize2);
-						//cout << "cb ac bits: " << cntidx << endl;
-					}
-
-					{
-						DCBlockData& dcrbd = icC.dframes[n].dcrblocks[nblck16];
-						int DCbits=0;
-						DCbits = DCientropy(&bitchar[cntidx], intrabdCr);
-						cntidx += DCbits;
-
-						//cout << "cr dc bits: " << cntidx << endl;
-
-						intrabdCr.ACflag = bitchar[cntidx++];  // ACflag ����
-
-						// AC�� decoding
-						if(intrabdCr.ACflag == 1)
-						{
-							cntidx += 63;
-							for(int i=0; i<63; i++)
-								intrabdCr.ACvals[i] = 0;
-						}
-						else if(intrabdCr.ACflag == 0)
-						{
-							int ACbits=0;
-							ACbits = ACientropy(&bitchar[cntidx], intrabdCr);
-							cntidx += ACbits;
-						}
-						intraDCblckDataInit(dcrbd, intrabdCr, blocksize2);
-
-						//cout << "cr ac bits: " << cntidx << endl;
-						//system("pause");
-					}					
-				}
-				//cout << n << "��° intra frame ���� �� bits: " << cntidx << endl;
-				//system("pause");				
-			}
-			else  // inter prediction
-			{
-				// Y channel
-				for(int nblck16=0; nblck16<totalblck; nblck16++)
-				{
-					DBlockData& dbd = icC.dframes[n].dblocks[nblck16];
-					dbd.MVmodeflag =  bitchar[cntidx++]; // MVmodeflag ����
-					MotionVector dmv;
-					dmv.x=dmv.y=0;
-
-					int MVbits=0;
-					MVbits = MVientropy(&bitchar[cntidx], dmv);					
-					cntidx += MVbits;
-
-					dbd.Reconstructedmv.x = dmv.x;
-					dbd.Reconstructedmv.y = dmv.y;
-
-					for(int nblck=0; nblck<nblckloop; nblck++)
-					{
-						// DC�� decoding
-						int DCbits=0;
-						DCbits = DCientropy(&bitchar[cntidx], interbdY);
-						cntidx += DCbits;
-
-						interbdY.ACflag = bitchar[cntidx++];  // ACflag ����
-
-						// AC�� decoding
-						if(interbdY.ACflag == 1)
-						{
-							cntidx += 63;
-							for(int i=0; i<63; i++)
-								interbdY.ACvals[i] = 0;
-						}
-						else if(interbdY.ACflag == 0)
-						{
-							int ACbits=0;
-							ACbits = ACientropy(&bitchar[cntidx], interbdY);
-							cntidx += ACbits;
-						}				
-						interDblckDataInit(dbd, interbdY, nblck, blocksize1, blocksize2);
-					}
-					//cout << "Yframe bits: " << cntidx << endl;
-
-					// Cb Cr channels
-					{DCBlockData& dcbbd = icC.dframes[n].dcbblocks[nblck16];
-					int DCbits=0;
-					DCbits = DCientropy(&bitchar[cntidx], interbdCb);
-					cntidx += DCbits;
-
-					interbdCb.ACflag = bitchar[cntidx++];  // ACflag ����
-
-					// AC�� decoding
-					if(interbdCb.ACflag == 1)
-					{
-						cntidx += 63;
-						for(int i=0; i<63; i++)
-							interbdCb.ACvals[i] = 0;
-					}
-					else if(interbdCb.ACflag == 0)
-					{
-						int ACbits=0;
-						ACbits = ACientropy(&bitchar[cntidx], interbdCb);
-						cntidx += ACbits;
-					}
-					interDCblckDataInit(dcbbd, interbdCb, blocksize2);}
-					//cout << "cbframe bits: " << cntidx << endl;
-
-					{DCBlockData& dcrbd = icC.dframes[n].dcrblocks[nblck16];
-					int DCbits=0;
-					DCbits = DCientropy(&bitchar[cntidx], interbdCr);
-					cntidx += DCbits;
-					//cout << "cr�� DC bits: " << cntidx << endl;
-
-					interbdCr.ACflag = bitchar[cntidx++];  // ACflag ����
-
-					// AC�� decoding
-					if(interbdCr.ACflag == 1)
-					{
-						cntidx += 63;
-						for(int i=0; i<63; i++)
-							interbdCr.ACvals[i] = 0;
-						//cout << "acflag: 1" << endl;
-					}
-					else if(interbdCr.ACflag == 0)
-					{
-						int ACbits=0;
-						ACbits = ACientropy(&bitchar[cntidx], interbdCr);
-						cntidx += ACbits;
-						//cout << "acflag: 0" << endl;
-					}
-					interDCblckDataInit(dcrbd, interbdCr, blocksize2);}
-					/*cout << "cr�� AC bits: " << cntidx << endl;
-					cout << "crframe bits: " << cntidx << endl;
-					system("pause");*/
-					
-				}
-			}
-			//cout << n << "��° ������ bits: " << cntidx << endl;
-		}
-	}
-	free(bitchar);
-	free(bodystream);
-	return 0;
+    free(bodystream);
+    if (bitchar) free(bitchar);
+    return 0;
 }
 
 /* intra */
@@ -826,9 +869,9 @@ int ACientropy(unsigned char* bitchar, IntrabodyY& intrabdY)
 	//cout << "AC ientropy" << endl;
 	for(int i=0; i<63; i++)
 	{
-		/////
+		///
 		int prevlast = last;
-		////
+		//
 
 		if(bitchar[last]==0 && bitchar[last+1]==0) // cate 0: 0
 		{
@@ -2154,7 +2197,76 @@ void allintraPredictionDecode(DFrameData *dframes, int nframes, int QstepDC, int
 	}
 }
 
-void allintraPredictionDecodeCabac(DFrameData *dframes, int nframes, int QstepDC, int QstepAC) {}
+void allintraPredictionDecodeCabac(DFrameData *dframes, int nframes, int QstepDC, int QstepAC) {
+	int totalblck = dframes->nblocks16;
+	int nblckloop = dframes->nblckloop;
+	int blocksize1 = dframes->blocksize1;
+	int blocksize2 = dframes->blocksize2;
+	int splitWidth = dframes->splitWidth;
+	int splitHeight = dframes->splitHeight;
+
+	for(int numOfFrms=0; numOfFrms<nframes; numOfFrms++)
+	{
+		DFrameData& dfrm = dframes[numOfFrms];
+		for(int numOfblck16=0; numOfblck16<totalblck; numOfblck16++)
+		{
+			DBlockData& dbd = dfrm.dblocks[numOfblck16];
+			DCBlockData& dcbbd = dfrm.dcbblocks[numOfblck16];
+			DCBlockData& dcrbd = dfrm.dcrblocks[numOfblck16];
+			
+			/* �Ҵ籸�� */
+			dbd.intraQuanblck = (Block8i**)malloc(sizeof(Block8i*)*nblckloop);
+			for(int i=0; i<nblckloop; i++)
+				dbd.intraQuanblck[i] = (Block8i*)malloc(sizeof(Block8i));
+
+			dbd.intraInverseQuanblck = (Block8i**)malloc(sizeof(Block8i*)*nblckloop);
+			for(int i=0; i<nblckloop; i++)
+				dbd.intraInverseQuanblck[i] = (Block8i*)malloc(sizeof(Block8i));
+
+			dbd.intraInverseDCTblck = (Block8d**)malloc(sizeof(Block8d*)*nblckloop);
+			for(int i=0; i<nblckloop; i++)
+				dbd.intraInverseDCTblck[i] = (Block8d*)malloc(sizeof(Block8d));
+
+			dbd.intraRestructedblck8 = (Block8u**)malloc(sizeof(Block8u*)*nblckloop);
+			for(int i=0; i<nblckloop; i++)
+				dbd.intraRestructedblck8[i] = (Block8u*)malloc(sizeof(Block8u));
+
+			dcbbd.intraInverseQuanblck = (Block8i*)malloc(sizeof(Block8i));
+			dcrbd.intraInverseQuanblck = (Block8i*)malloc(sizeof(Block8i));
+			dcbbd.intraInverseDCTblck  = (Block8d*)malloc(sizeof(Block8d));
+			dcrbd.intraInverseDCTblck  = (Block8d*)malloc(sizeof(Block8d));
+
+			/* �Ҵ籸���� */
+
+			for(int numOfblck8=0; numOfblck8<nblckloop; numOfblck8++)
+			{
+				reorderingblck(dbd, numOfblck8, INTRA);
+				IQuantization_block(dbd, numOfblck8, blocksize2, QstepDC, QstepAC, INTRA);
+				IDPCM_DC_block(dfrm, numOfblck16, numOfblck8, blocksize2, splitWidth, INTRA);
+				IDCT_block(dbd, numOfblck8, blocksize2, INTRA);
+				IDPCM_pix_block(dfrm, numOfblck16, numOfblck8, blocksize2, splitWidth);
+			}
+			mergeBlock(dbd, blocksize2, INTRA);
+
+			intraCbCr(dfrm, dcbbd, dcrbd, blocksize2, numOfblck16, QstepDC, QstepAC);
+			free(dbd.intraInverseDCTblck);
+		}
+
+		intraImgReconstruct(dfrm);
+
+		for(int numOfblck16=0; numOfblck16<totalblck; numOfblck16++)
+		{
+			for(int numOfblck8=0; numOfblck8<nblckloop; numOfblck8++)
+				free(dfrm.dblocks[numOfblck16].intraInverseQuanblck[numOfblck8]);
+			free(dfrm.dblocks[numOfblck16].intraInverseQuanblck);
+			
+			free(dfrm.dcbblocks[numOfblck16].intraInverseQuanblck);
+			free(dfrm.dcrblocks[numOfblck16].intraInverseQuanblck);
+			free(dfrm.dcbblocks[numOfblck16].intraInverseDCTblck);
+			free(dfrm.dcrblocks[numOfblck16].intraInverseDCTblck);
+		}
+	}
+}
 void intraPredictionDecode(DFrameData& dfrm, int QstepDC, int QstepAC)
 {
 	int totalblck   = dfrm.nblocks16;
@@ -2672,7 +2784,7 @@ void interCbCr(DFrameData& dcntFrm, DFrameData& dprevFrm, int QstepDC, int Qstep
 	// ���⼭���� ���ϴ��� �ݺ� 
 	for(int nblck=0; nblck<totalblck; nblck++)
 	{
-		// Cb �Ҵ� //
+		// Cb �Ҵ�
 		dcntFrm.dcbblocks[nblck].interQuanblck = (Block8i*)malloc(sizeof(Block8i));
 
 		Creorderingblck(dcntFrm.dcbblocks[nblck], INTER);
@@ -2681,7 +2793,7 @@ void interCbCr(DFrameData& dcntFrm, DFrameData& dprevFrm, int QstepDC, int Qstep
 		CIDCT_block(dcntFrm.dcbblocks[nblck], blocksize, INTER);
 
 
-		// Cr �Ҵ� //
+		// Cr �Ҵ�
 		dcntFrm.dcrblocks[nblck].interQuanblck = (Block8i*)malloc(sizeof(Block8i));
 
 		Creorderingblck(dcntFrm.dcrblocks[nblck], INTER);
@@ -3400,7 +3512,7 @@ void IDCT_block(DBlockData &bd, int numOfblck8, int blocksize, int predmode)
 	//for(int y=0; y<blocksize; y++)
 	//	for(int x=0; x<blocksize; x++)
 	//		idct2blck.block[y][x] = 0;
-	//	
+
 	//for(int y=0; y<blocksize; y++)
 	//{
 	//	for(int x=0; x<blocksize; x++)

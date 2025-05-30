@@ -5168,6 +5168,7 @@ void makebitstream(FrameData* frames, int nframes, int height, int width, int Qs
 		int maxbits = frames->splitHeight * frames->splitWidth * frames->blocks->blocksize1 * frames->blocks->blocksize1 * nframes * 8;
 		if (nframes <= 480 && nframes > 300) maxbits *= 4;
 		else if (nframes <= 300)maxbits *= 6;
+		// if (EC == EntropyCoding::Cabac) maxbits /= nframes;
 		// if (nframes > 480) maxbits4 /= ;
 		// Allocate this number in bytes
 		unsigned char* tempFrame = (unsigned char*)malloc(sizeof(unsigned char)*(maxbits/8));
@@ -5245,7 +5246,7 @@ void allintraBodyCabac(FrameData* frames, int nframes, int QstepDC, FILE* fp, St
     int totalblck = frames->nblocks16;
     int nblock8   = frames->nblocks8;
     int maxbytes  = frames->splitHeight * frames->splitWidth * frames->blocks->blocksize1 *
-                    frames->blocks->blocksize1 * 8 * nframes; // estimate in bytes
+                    frames->blocks->blocksize1 * 8; // estimate in bytes
 	if (nframes <= 480) maxbytes *= 2;
     // Allocate output buffer
     uint8_t* frame = (uint8_t*)malloc(sizeof(uint8_t) * maxbytes);
@@ -5257,6 +5258,7 @@ void allintraBodyCabac(FrameData* frames, int nframes, int QstepDC, FILE* fp, St
 
     for (int nfrm = 0; nfrm < nframes; nfrm++) {
         x264_cabac_t cb;
+		memset(frame,0,maxbytes*sizeof(uint8_t));
         x264_cabac_context_init(&cb, SLICE_TYPE_I, QstepDC, 0);
         x264_cabac_encode_init(&cb, frame, frameEnd);
 
@@ -5277,7 +5279,7 @@ void allintraBodyCabac(FrameData* frames, int nframes, int QstepDC, FILE* fp, St
                     stats->totalDcBits[frames[nfrm].numOfFrame] += x264_cabac_pos(&cb) - pos0;
 
                 pos0 = x264_cabac_pos(&cb); 
-                x264_cabac_encode_decision(&cb, CTX_AC_PRESENT, !bd.intraACflag[nblck8]);
+                x264_cabac_encode_decision(&cb, CTX_AC_PRESENT, bd.intraACflag[nblck8]);
 
                 if (bd.intraACflag[nblck8] == 1) {
                     for (int i = 0; i < 63; i++)
@@ -5317,7 +5319,7 @@ void allintraBodyCabac(FrameData* frames, int nframes, int QstepDC, FILE* fp, St
                     stats->totalDcBits[frames[nfrm].numOfFrame] += x264_cabac_pos(&cb) - pos0;
 
                 pos0 = x264_cabac_pos(&cb);
-                x264_cabac_encode_decision(&cb, CTX_AC_PRESENT, !cbd.intraACflag);
+                x264_cabac_encode_decision(&cb, CTX_AC_PRESENT, cbd.intraACflag);
 
                 if (cbd.intraACflag == 1) {
                     for (int i = 0; i < 63; i++)
@@ -5556,8 +5558,8 @@ void intraBodyCabac(FrameData& frm, unsigned char* tempFrame, int& cntbits,x264_
                     stats->totalDcBits[frm.numOfFrame] += x264_cabac_pos(&cb) - pos0;
 
                 pos0 = x264_cabac_pos(&cb);
-                x264_cabac_encode_decision(&cb, CTX_AC_PRESENT, !bd.intraACflag[nblck8]);
-
+                x264_cabac_encode_decision(&cb, CTX_AC_PRESENT, bd.intraACflag[nblck8]);
+			
                 if (bd.intraACflag[nblck8] == 1) {
                     for (int i = 0; i < 63; i++)
                         x264_cabac_encode_decision(&cb, CTX_IDX_AC_START + i, 0);
@@ -5596,7 +5598,7 @@ void intraBodyCabac(FrameData& frm, unsigned char* tempFrame, int& cntbits,x264_
                     stats->totalDcBits[frm.numOfFrame] += x264_cabac_pos(&cb) - pos0;
 
                 pos0 = x264_cabac_pos(&cb);
-                x264_cabac_encode_decision(&cb, CTX_AC_PRESENT, !cbd.intraACflag);
+                x264_cabac_encode_decision(&cb, CTX_AC_PRESENT, cbd.intraACflag);
 
                 if (cbd.intraACflag == 1) {
                     for (int i = 0; i < 63; i++)
@@ -5823,7 +5825,7 @@ void interBodyCabac(FrameData& frm, unsigned char* tempFrame, int& cntbits,x264_
         	x264_cabac_encode_decision(&cb, CTX_MV_FLAG,  1);
 			//X
 			int pos0 = x264_cabac_pos(&cb);
-			int mvx = bd.mv.x;  // signed delta
+			int mvx = bd.mv.x; 
         	x264_cabac_encode_ue_bypass(&cb, 0, abs(mvx));
         	x264_cabac_encode_bypass(&cb, mvx < 0);
 			//Y
@@ -5832,8 +5834,8 @@ void interBodyCabac(FrameData& frm, unsigned char* tempFrame, int& cntbits,x264_
         	x264_cabac_encode_bypass   (&cb, mvy < 0);
         	if (stats) stats->totalMvBits[frm.numOfFrame] += x264_cabac_pos(&cb) - pos0;
             for (int nblck8 = 0; nblck8 < nblock8; nblck8++) {
-                x264_cabac_encode_decision(&cb, CTX_MPM_FLAG, bd.MPMFlag[nblck8]);
-                x264_cabac_encode_decision(&cb, CTX_INTRA_PRED, bd.intraPredMode[nblck8]);
+                // x264_cabac_encode_decision(&cb, CTX_MPM_FLAG, bd.MPMFlag[nblck8]);
+                // x264_cabac_encode_decision(&cb, CTX_INTRA_PRED, bd.intraPredMode[nblck8]);
 				pos0 = x264_cabac_pos(&cb);
                 int dc = bd.interReorderedblck8[nblck8][0];
                 x264_cabac_encode_decision(&cb, CTX_IDX_DC, dc != 0);
@@ -5846,7 +5848,7 @@ void interBodyCabac(FrameData& frm, unsigned char* tempFrame, int& cntbits,x264_
                     stats->totalDcBits[frm.numOfFrame] += x264_cabac_pos(&cb) - pos0;
 
                 pos0 = x264_cabac_pos(&cb);
-                x264_cabac_encode_decision(&cb, CTX_AC_PRESENT, !bd.intraACflag[nblck8]);
+                x264_cabac_encode_decision(&cb, CTX_AC_PRESENT, bd.intraACflag[nblck8]);
 
                 if (bd.intraACflag[nblck8] == 1) {
                     for (int i = 0; i < 63; i++)
@@ -5886,7 +5888,7 @@ void interBodyCabac(FrameData& frm, unsigned char* tempFrame, int& cntbits,x264_
                     stats->totalDcBits[frm.numOfFrame] += x264_cabac_pos(&cb) - pos0;
 
                 pos0 = x264_cabac_pos(&cb);
-                x264_cabac_encode_decision(&cb, CTX_AC_PRESENT, !cbd.intraACflag);
+                x264_cabac_encode_decision(&cb, CTX_AC_PRESENT, cbd.intraACflag);
 
                 if (cbd.intraACflag == 1) {
                     for (int i = 0; i < 63; i++)

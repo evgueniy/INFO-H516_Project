@@ -1,6 +1,9 @@
+#ifndef ICSP_CODEC_DECODER_H
+#define ICSP_CODEC_DECODER_H
 #pragma once
 #include <iostream>
 #include <time.h>
+#define IS_DECODER
 #include "../encoder/cabac.h"
 #include <cstring>
 #include <cmath>
@@ -14,7 +17,12 @@ using namespace std;
 #define SAVE_YUV 6
 
 #define MAXFRAMES 600
-
+#define CTX_IDX_DC 4
+#define CTX_IDX_AC_START 5
+#define CTX_MPM_FLAG       100   // for mpm flag
+#define CTX_INTRA_PRED     101   // for intraPredMode flag
+#define CTX_AC_PRESENT     102   // for your intraACflag (AC‑present)
+#define CTX_MV_FLAG    	   103  // motion vector flags
 
 
 const double pi = 3.14159265359;
@@ -308,8 +316,7 @@ inline void IcspCodec::decoding(char *imgfname)
 	if( intraPeriod==1)
 	{
 		
-		if(this->decoder != EntropyCoding::Cabac) allintraPredictionDecode(dframes, nframes, QstepDC, QstepAC);
-		else allintraPredictionDecodeCabac(dframes, nframes, QstepDC, QstepAC);
+		allintraPredictionDecode(dframes, nframes, QstepDC, QstepAC);
 		checkResultFrames(dframes,  width, height, nframes, INTRA, SAVE_YUV, imgfname);
 	}
 	else
@@ -381,3 +388,4 @@ inline IcspCodec::~IcspCodec()
 		free(dframes[i].dcrblocks);
 	}
 }
+#endif

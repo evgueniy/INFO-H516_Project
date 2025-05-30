@@ -1,3 +1,4 @@
+#define IS_DECODER
 #include "ICSP_Codec_Decoder.h"
 
 
