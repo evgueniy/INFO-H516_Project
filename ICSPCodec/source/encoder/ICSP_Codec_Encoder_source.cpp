@@ -196,7 +196,7 @@ void writeHistogramBitsizeStats(const Statistics &stats, char* fname, int intra_
 	char fileName[256];
 
 	// File naming scheme original file name _ Qp _ Qp _ Intraperiod 
-	sprintf(fileName, "%s/hist_bitsize_%s_%d_%d_%d.csv",resultDirectory,fname,QstepDC,QstepAC,intra_period);
+	sprintf(fileName, "%s/hist_bitsize_%s_%d_%d_%d_%d.csv",resultDirectory,fname,QstepDC,QstepAC,intra_period,static_cast<int>(EC));
 	FILE *csv = fopen(fileName, "w");
 	if (!csv) {
         perror("Error opening the CSV file");
@@ -233,7 +233,7 @@ void writeHistogramValueStats(const Statistics &stats, char* fname, int intra_pe
 	char fileName[256];
 
 	// File naming scheme original file name _ Qp _ Qp _ Intraperiod 
-	sprintf(fileName, "%s/hist_value_%s_%d_%d_%d.csv",resultDirectory,fname,QstepDC,QstepAC,intra_period);
+	sprintf(fileName, "%s/hist_value_%s_%d_%d_%d_%d.csv",resultDirectory,fname,QstepDC,QstepAC,intra_period,static_cast<int>(EC));
 	FILE *csv = fopen(fileName, "w");
 	if (!csv) {
         perror("Error opening the CSV file");
@@ -6875,12 +6875,12 @@ unsigned char* ACentropyOriginal(int* reordblck, int& nbits,Statistics* stats ){
 unsigned char* ACentropy(int* reordblck, int& nbits, evx::entropy_coder& encoder, Statistics* stats)
 {
 	if (EC == EntropyCoding::Abac) return ACentropyCabac(reordblck, nbits, encoder, stats);
-	else if (EC == EntropyCoding::Huffman)  return ACentropyHuffman(reordblck, nbits);
+	else if (EC == EntropyCoding::Huffman)  return ACentropyHuffman(reordblck, nbits, stats);
 	return ACentropyOriginal(reordblck, nbits,stats);
 	
 }
 
-unsigned char* ACentropyHuffman(int* reordblck, int& nbits) {
+unsigned char* ACentropyHuffman(int* reordblck, int& nbits, Statistics* stats) {
 	const int length = 63;
 	unordered_map<int, int> freq;
 
@@ -6920,6 +6920,13 @@ unsigned char* ACentropyHuffman(int* reordblck, int& nbits) {
 
 		if (absval != 0)
 			bitstream.push_back(sign);
+
+		// Record statistics for histograms
+		if (stats) {
+			int bitsize = absval == 0 ? code.length() : code.length() + 1;
+			stats->acNbitsHistogram[bitsize] += 1;
+			stats->acValuesHistogram[min(absval, 2048)] += 1;
+		}
 	}
 
 	nbits = bitstream.size();

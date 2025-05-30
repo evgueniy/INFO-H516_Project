@@ -391,7 +391,7 @@ unsigned char* DCentropy(int DCval, int& nbits, evx::entropy_coder& encoder, Sta
 unsigned char* DCentropyOriginal(int DCval, int& nbits, Statistics* stats = nullptr);
 int ACentropy(int* reordblck, unsigned char *ACentropyResult);
 unsigned char* ACentropy(int* reordblck, int& nbits, evx::entropy_coder& encoder, Statistics* stats = nullptr);
-unsigned char* ACentropyHuffman(int* reordblck, int& nbits);
+unsigned char* ACentropyHuffman(int* reordblck, int& nbits, Statistics* stats = nullptr);
 unsigned char* ACentropyOriginal(int* reordblck, int& nbits);
 unsigned char* MVentropy(MotionVector mv, int& nbitsx, int& nbitsy, evx::entropy_coder& encoder, Statistics* stats = nullptr);
 unsigned char* MVentropyOriginal(MotionVector mv, int& nbitsx, int& nbitsy, Statistics* stats = nullptr);
