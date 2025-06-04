@@ -138,6 +138,20 @@ where we have the following arguments:
 - First encoder (here `cabac`)
 - Second encoder (here `original`)
 
+### Plot histograms (by value & by bitsize)
+
+By bitsize:
+
+```bash
+python encoding_histograms.py ../ICSPCodec/results/hist_bitsize_table_16_16_8.csv
+```
+
+By value:
+
+```bash
+python encoding_histograms_values.py ../ICSPCodec/results/hist_value_table_16_16_8.csv
+```
+
 ### Launch scalable pipeline and show PSNR / frame
 
 ```bash
