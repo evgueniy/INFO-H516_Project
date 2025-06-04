@@ -126,14 +126,14 @@ where we have the following arguments:
 ### Plot PSNR for several encoders with several QPs
 
 ```bash
-python3 plot_psnr_ec.py ../ICSPCodec/data/table_cif\(352X288\)_300f.yuv 2 7 20 4 cabac original
+python3 plot_psnr_ec.py ../ICSPCodec/data/table_cif\(352X288\)_300f.yuv 2 4 7 20 cabac original
 ```
 
 where we have the following arguments:
 
 - YUV video (here `../ICSPCodec/data/table_cif\(352X288\)_300f.yuv`)
 - Either:
-    - Four QP values between 2 and 48 (here `2 7 20 4`)
+    - Four QP values between 2 and 48 in increasing order (here `2 4 7 20`)
     - Simply `all` to run for all QPs between 2 and 48
 - First encoder (here `cabac`)
 - Second encoder (here `original`)
