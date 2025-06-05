@@ -22,7 +22,7 @@ exec_type = 'Debug'
 print("Before change:", os.getcwd())
 os.chdir(f"../ICSPCodec/build/{exec_type}/")
 print("After change:", os.getcwd())
-mpeg1_executable = f"./ICSPCodec"
+mpeg1_executable = "./ICSPCodec"
 qp_value = sys.argv[2]
 intra_period = sys.argv[3]
 encoder = "original" if len(sys.argv) < 5 else sys.argv[4]
@@ -125,6 +125,11 @@ og_yuv_decoded = input_yuv_path + decode
 print(og_yuv_decoded)
 subprocess.run(f'{mpeg1_executable} -i "{input_yuv_path}" -n {nb_frames} -q {qp_value} --intraPeriod {intra_period} --EnMultiThread 0 -e {encoder} -h {height} -w {width}', shell=True, check=True)
 
+print(f"Encoding {upscaled_yuv_name.upper()}...")
+upscaled_yuv_decoded = upscaled_yuv_input + decode
+print(og_yuv_decoded)
+subprocess.run(f'{mpeg1_executable} -i "{upscaled_yuv_input}" -n {nb_frames} -q {qp_value} --intraPeriod {intra_period} --EnMultiThread 0 -e {encoder} -h {height} -w {width}', shell=True, check=True)
+
 
 orig = getYValues(height,width,nb_frames,input_yuv_path)
 orig_dec = getYValues(height,width,nb_frames,og_yuv_decoded)
@@ -133,6 +138,7 @@ downscaled = getYValues(height//2,width//2,nb_frames,downscaled_yuv_input)
 downscaled_dec = getYValues(height//2,width//2,nb_frames,downscaled_yuv_decoded)
 
 upscaled = getYValues(height,width,nb_frames,upscaled_yuv_input)
+upscaled_dec = getYValues(height,width,nb_frames,upscaled_yuv_decoded)
 
 
 
@@ -163,13 +169,13 @@ decoded_residual = getYValues(height, width, nb_frames, encoded_residual_file)
 decoded_residual = decoded_residual.astype(np.float32) - 128  # Un-shift
 
 # === Final reconstruction ===
-recon = np.clip(upscaled + decoded_residual, 0, 255)
+recon = np.clip(upscaled_dec + decoded_residual, 0, 255)
 
 
 # === PSNR Comparison ===
 psnr_orig = getPsnr(orig, orig_dec)
 psnr_downscaled = getPsnr(downscaled, downscaled_dec)
-psnr_upscaled = getPsnr(orig, upscaled)
+psnr_upscaled = getPsnr(orig, upscaled_dec)
 psnr_reconstructed = getPsnr(orig, recon)
 for i in range(nb_frames):
     print(f'frame {i} : original = {psnr_orig[i]:.2f} dB | downscaled={psnr_downscaled[i]:.2f} dB | recon={psnr_reconstructed[i]:.2f} dB | upscaled={psnr_upscaled[i]:.2f} dB')

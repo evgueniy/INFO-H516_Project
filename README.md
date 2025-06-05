@@ -74,8 +74,8 @@ Running it produces the following files found under `./results` (the example
 file names are resulting from the above invocation):
 
 - **Encoded Binary File**:  `table_compCIF_16_16_8_0.bin`
-- **Decoded YUV File**:  `table_cif(352X288)_300f.yuv_16_16_8_decoded.yuv` (not in `./results`)
-- **Error Image File**: `table_cif(352X288)_300f.yuv_16_16_8_errors.yuv` (not in `./results`)
+- **Decoded YUV File**:  `table_cif(352X288)_300f.yuv_16_16_8_decoded.yuv` (not in `./results`, but in `./data`)
+- **Error Image File**: `table_cif(352X288)_300f.yuv_16_16_8_errors.yuv` (not in `./results`, but in `./data`)
 - **Statistics File**: `table_16_16_8_0.csv`
 - **Histogram by Value**: `hist_value_table_16_16_8_0.csv`
 - **Histogram by Bitsize**: `hist_bitsize_table_16_16_8_0.csv`
